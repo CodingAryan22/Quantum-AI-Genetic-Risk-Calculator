@@ -1,0 +1,5 @@
+Patient_ID,BRCA1,TP53,Family_History,Risk_Label
+P001,1,0,1,High
+P002,0,0,0,Low
+P003,1,1,1,High
+P004,0,1,0,Medium

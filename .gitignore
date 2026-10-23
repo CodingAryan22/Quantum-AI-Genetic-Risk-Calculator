@@ -1,0 +1,15 @@
+# Secret API Keys
+.streamlit/secrets.toml
+secrets.toml
+**/.streamlit/secrets.toml
+
+# Python Cache & Virtual Environment
+__pycache__/
+.pytest_cache/
+Lib/
+Scripts/
+Include/
+share/
+etc/
+pyvenv.cfg
+*.pyc
