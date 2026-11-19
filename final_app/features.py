@@ -38,6 +38,6 @@ def normalize_marker_status(value) -> str:
 
 
 def positive_markers(patient_data: dict) -> list[str]:
-    """Names of the scored genes (BRCA1, BRCA2, APC, TP53) that are Positive."""
+    """Names of the four main genes (BRCA1, BRCA2, APC, TP53) that are Positive."""
     genetics = patient_data.get("Genetic Markers", {}) or {}
     return [m for m, v in genetics.items() if normalize_marker_status(v) == POSITIVE]

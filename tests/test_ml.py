@@ -32,7 +32,8 @@ def test_patient_vector_encodes_every_feature_in_order():
         "Family History": {"First-degree": 2, "Second-degree": 1},
     }))
     assert dict(zip(FEATURES, x)) == {
-        "BRCA1": 1.0, "BRCA2": 0.0, "APC": 0.0, "TP53": 0.5, "Female": 1.0, "Age": 45.0,
+        "BRCA1": 1.0, "BRCA2": 0.0, "APC": 0.0, "TP53": 0.5, "Other gene risk": 0.0,
+        "Female": 1.0, "Age": 45.0,
         "Smoking": 2.0, "First-degree relatives": 2.0, "Second-degree relatives": 1.0,
     }
 

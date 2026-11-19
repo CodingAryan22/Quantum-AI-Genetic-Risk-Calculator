@@ -4,7 +4,7 @@ The web app (`final_app/`) runs its quantum kernel SVM with **exact statevector
 simulation**: fast, deterministic, no noise. That is standard practice for
 research and training, but it is not how a quantum computer works.
 
-This folder runs the **same 9-qubit circuit the way a quantum computer would**:
+This folder runs the **same 10-qubit circuit the way a quantum computer would**:
 as measured shots, compiled into a real device's native gates and qubit layout.
 The same code can target four backends:
 
@@ -44,7 +44,7 @@ Each run:
 
 1. picks a small stratified set of synthetic patients from
    `final_app/data/synthetic_patients.csv` (read only),
-2. scales their 9 features to rotation angles,
+2. scales their 10 features to rotation angles,
 3. measures the kernel (patient similarity) with fidelity circuits,
 4. trains an SVM on that kernel and scores the test patients (AUC),
 5. does the same with the exact kernel and reports how far the backend is off.
@@ -59,7 +59,7 @@ A quantum computer can't hand over its state vector, so the similarity of
 patients *x* and *y* is measured with the compute-uncompute test:
 
 ```
-|0…0⟩ ── U(x) ── U(y)† ── measure all 9 qubits
+|0…0⟩ ── U(x) ── U(y)† ── measure all 10 qubits
 ```
 
 The share of shots where every qubit reads 0 is exactly
@@ -78,32 +78,37 @@ gate twirling in Qiskit Runtime.
 
 ## Results so far (simulators)
 
-Run on 19 Nov 2026; the raw output is in `results/`.
+Run on 20 Nov 2026 with the 10-feature model (the app's 4 main genes + "other gene
+risk" + 5 more); the raw output is in `results/`. All runs use random seed 0.
 
-| Backend | Circuit | Two-qubit gates on chip | Patients (train / test) | Kernel error vs exact | Test AUC (exact → backend) |
-|---|---|---|---|---|---|
-| ideal | full entanglement (as in the app) | 286 | 40 / 40 | **0.008** | 0.697 → 0.693 |
-| noisy, no mitigation | linear | 62 | 20 / 20 | 0.300 | 0.706 → 0.686 |
-| noisy, with mitigation | linear | 62 | 20 / 20 | **0.022** | 0.706 → 0.824* |
-| noisy, with mitigation | full entanglement | 677 | 20 / 20 | 0.087 | 0.510 → 0.333 |
+| Backend | Circuit | Two-qubit gates on chip | Patients (train / test) | Kernel error vs exact | Average similarity (exact → backend) | Test AUC (exact → backend) |
+|---|---|---|---|---|---|---|
+| ideal | full entanglement (as in the app) | 358 | 40 / 40 | **0.007** | 0.461 → 0.461 | 0.375 → 0.363 |
+| noisy, no mitigation | linear | 70 | 20 / 20 | 0.342 | 0.872 → 0.530 | 0.484 → 0.344 |
+| noisy, with mitigation | linear | 70 | 20 / 20 | **0.022** | 0.872 → 0.868 | 0.484 → 0.484 |
+| noisy, with mitigation | full entanglement | 828 | 20 / 20 | 0.165 | 0.483 → 0.534 | 0.609 → 0.641 |
 
-\*Higher than exact by chance: only 3 of the 20 test patients are positive, so
-a single re-ranked patient moves the AUC by about 0.06.
+**Read the kernel error, not the AUC.** Seed 0 happens to be an unlucky patient
+sample: with only 4–8 positive test patients the AUC swings a lot. Across 10
+random samples the *exact* kernel averages AUC 0.66 ± 0.12 (40 / 40 patients,
+full entanglement) and 0.70 ± 0.17 (20 / 20, linear), and seed 0 is the worst
+draw in both. The useful comparison is that each backend matches the exact
+answer (the same AUC on the same patients), and the kernel error measures that
+directly.
 
 What this shows:
 
 - **The circuit measurement is correct.** The ideal shot-based simulator matches
-  the exact kernel to within shot noise.
+  the exact kernel to within shot noise (0.007).
 - **Noise matters, and mitigation handles much of it.** With the real-device
-  noise model, raw similarities are pulled far below their true values.
-  Mitigation brings them back close to exact, and classification recovers.
+  noise model, raw similarities drop from 0.87 to 0.53 on average. Mitigation
+  brings them back to 0.87, the kernel error falls from 0.34 to 0.02, and the
+  model gives the same AUC as the exact kernel.
 - **Circuit depth is the limit.** The web app's full-entanglement circuit becomes
-  ~680 two-qubit gates once routed onto the chip. Linear entanglement needs
-  only ~60, which today's hardware can run far more faithfully. That's why
-  `--entanglement linear` is recommended for hardware runs.
-
-With 20–40 test patients the AUC moves noticeably between random seeds, so the
-kernel error is the cleaner measure of how good a backend is.
+  ~830 two-qubit gates once routed onto the chip. Even with mitigation its error
+  stays at 0.17. Linear entanglement needs only ~70, which today's hardware can
+  run far more faithfully. That's why `--entanglement linear` is recommended for
+  hardware runs.
 
 ## Running on real IBM hardware
 

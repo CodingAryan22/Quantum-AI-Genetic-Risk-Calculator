@@ -7,8 +7,10 @@ import streamlit as st
 
 try:
     from features import positive_markers
+    import genes
 except ModuleNotFoundError:  # imported as final_app.ai_synthesizer
     from .features import positive_markers
+    from . import genes
 
 MARKER_INFO = {
     "BRCA1": "BRCA1 (associated with elevated risk of hereditary breast and ovarian cancers)",
@@ -73,11 +75,15 @@ def build_prompt(patient_data: dict, risk_table, model_predictions: dict | None 
     ci_range = risk_table["90% Confidence Interval"].iloc[0]
 
     marker_descriptions = [MARKER_INFO[m] for m in positive_markers(patient_data) if m in MARKER_INFO]
-    for marker in patient_data.get("Other Genetic Markers", []):
+    known, unknown = genes.split_known(patient_data.get("Other Genetic Markers"))
+    for gene in known:
+        marker_descriptions.append(f"{gene} ({genes.OTHER_GENES[gene]['cancers']}; "
+                                   "included in the risk score)")
+    for marker in unknown:
         marker_descriptions.append(
             f"{deidentify(str(marker), patient_data.get('Name') or '')} (reported by the clinician; "
-            "not included in the numeric risk score - explain its general significance if it is "
-            "a recognised gene)"
+            "no published risk figures on file, so not included in the numeric risk score - "
+            "explain its general significance if it is a recognised gene)"
         )
     markers_text = (
         "\n".join(f"    - {d}" for d in marker_descriptions)
@@ -185,7 +191,7 @@ def fallback_summary(patient_data: dict, risk_table) -> str:
     mean = float(risk_table["Simulated Mean"].iloc[0].replace("%", ""))
     ci = risk_table["90% Confidence Interval"].iloc[0]
     markers = positive_markers(patient_data)
-    others = list(patient_data.get("Other Genetic Markers") or [])
+    known, unknown = genes.split_known(patient_data.get("Other Genetic Markers"))
     family = patient_data.get("Family History", {}) or {}
     first, second = family.get("First-degree", 0) or 0, family.get("Second-degree", 0) or 0
     smoking = patient_data.get("Smoking History") or "Never Smoked"
@@ -195,9 +201,13 @@ def fallback_summary(patient_data: dict, risk_table) -> str:
         findings.append("Your results show a change in " + "; ".join(
             MARKER_INFO[m].replace(" (", ", which is ").rstrip(")") for m in markers if m in MARKER_INFO) + ".")
     else:
-        findings.append("None of the four scored genes (BRCA1, BRCA2, APC, TP53) showed a harmful change.")
-    if others:
-        findings.append(f"Other reported changes ({', '.join(others)}) are noted for your doctor "
+        findings.append("None of the four main genes (BRCA1, BRCA2, APC, TP53) showed a harmful change.")
+    if known:
+        findings.append("A change was also reported in " + "; ".join(
+            f"{g} ({genes.OTHER_GENES[g]['cancers'].lower()})" for g in known)
+            + ", which is included in your score.")
+    if unknown:
+        findings.append(f"Other reported changes ({', '.join(unknown)}) are noted for your doctor "
                         "but are not part of the numeric score.")
     if first or second:
         findings.append(f"You reported {first} close (first-degree) and {second} second-degree "

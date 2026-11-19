@@ -168,7 +168,7 @@ def train_models(df: pd.DataFrame, quick: bool = False):
 
     # Rule-based score: no training, evaluated for reference.
     t0 = time.perf_counter()
-    proba = _rule_based_proba(X_test)
+    proba = _rule_based_proba(df.loc[X_test.index])  # full rows: the rule score needs gene names
     test_proba["Rule-based score"] = proba
     results["Rule-based score"] = {
         **_evaluate(y_test, proba), "cv_auc": None, "cv_auc_std": None, "fit_seconds": 0.0,

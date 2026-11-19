@@ -5,7 +5,7 @@
     "test": 20,
     "shots": 1000,
     "reps": 2,
-    "entanglement": "full",
+    "entanglement": "linear",
     "scale": 0.02,
     "C": 1.0,
     "fake": "FakeTorino",
@@ -19,50 +19,50 @@
     "backend": "Aer simulator with real-device noise (aer_simulator_from(fake_torino))",
     "shots": 1000,
     "logical_circuit": {
-      "qubits": 9,
-      "depth": 153,
-      "two_qubit_gates": 288,
+      "qubits": 10,
+      "depth": 75,
+      "two_qubit_gates": 72,
       "gate_counts": {
-        "cx": 288,
-        "u": 216,
-        "measure": 9,
+        "u": 116,
+        "cx": 72,
+        "measure": 10,
         "barrier": 1
       }
     },
     "device_circuit": {
       "qubits": 133,
-      "depth": 1116,
-      "two_qubit_gates": 677,
+      "depth": 206,
+      "two_qubit_gates": 70,
       "gate_counts": {
-        "sx": 1206,
-        "rz": 849,
-        "cz": 677,
-        "measure": 9,
-        "x": 5,
+        "rz": 262,
+        "sx": 176,
+        "cz": 70,
+        "measure": 10,
         "barrier": 1
       }
     },
     "physical_qubits": [
-      33,
-      32,
-      37,
-      31,
-      18,
-      12,
-      11,
-      13,
-      10
+      60,
+      61,
+      62,
+      63,
+      73,
+      82,
+      81,
+      80,
+      92,
+      99
     ]
   },
   "result": {
-    "exact_auc": 0.5098039215686274,
-    "exact_seconds": 0.923,
-    "backend_auc": 0.3333333333333333,
-    "kernel_mean_abs_error": 0.0870923739611902,
-    "mean_kernel_exact": 0.3725175191333194,
-    "mean_kernel_backend": 0.41447683268409025,
+    "exact_auc": 0.484375,
+    "exact_seconds": 0.421,
+    "backend_auc": 0.484375,
+    "kernel_mean_abs_error": 0.022022251493747064,
+    "mean_kernel_exact": 0.8715143227764439,
+    "mean_kernel_backend": 0.8681122959939757,
     "circuits_run": 630,
-    "seconds": 320.4,
+    "seconds": 1021.7,
     "job_ids": []
   }
 }

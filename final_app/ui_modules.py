@@ -9,6 +9,7 @@ import html
 import plotly.graph_objects as go
 import streamlit as st
 
+import genes
 import quantum_engine
 
 # ==========================================
@@ -791,7 +792,7 @@ a rule-based score with classical and quantum machine-learning models, explains 
 and writes a plain-language clinical summary.</p>
 <div class="hero-checks">
 <div><i>✓</i>BRCA1, BRCA2, APC, TP53</div>
-<div><i>✓</i>9-qubit quantum kernel model</div>
+<div><i>✓</i>10-qubit quantum kernel model</div>
 <div><i>✓</i>Explainable, exportable report</div>
 </div>
 </div>
@@ -1128,10 +1129,16 @@ def factor_rows(patient_data: dict):
             points=weight if present else 0.0,
             status=("Detected", "bad") if present else ("Not detected", "good"),
         ))
-    for name in patient_data.get("Other Genetic Markers", []):
+    known, unknown = genes.split_known(patient_data.get("Other Genetic Markers"))
+    for name in known:
         rows.append(dict(
-            code=name, title=name, sub="Added by clinician · not scored", kind="Genetic marker",
-            points=0.0, status=("Reported", "warn"),
+            code=name, title=name, sub=genes.OTHER_GENES[name]["cancers"], kind="Genetic marker",
+            points=genes.rule_points(name), status=("Detected", "bad"),
+        ))
+    for name in unknown:
+        rows.append(dict(
+            code=name[:3].upper(), title=name, sub="Not scored · no published risk on file",
+            kind="Genetic marker", points=0.0, status=("Not scored", "warn"),
         ))
     age = patient_data.get("Age")
     pts = _age_points(age)
@@ -1188,7 +1195,7 @@ def factor_table(patient_data: dict):
 MODEL_BLURBS = {
     "Logistic regression": ("LR", "Linear, explainable"),
     "Random forest": ("RF", "400 decision trees"),
-    "Quantum kernel SVM": ("QK", "9 qubits · Qiskit"),
+    "Quantum kernel SVM": ("QK", "10 qubits · Qiskit"),
 }
 
 
@@ -1517,11 +1524,12 @@ def footer_note():
 def about_page(metrics: dict | None):
     page_header("About & method", "How RiskPredict works, what the data is, and its limits.")
     steps = [
-        ("Enter the patient", "Demographics, the four scored genes (BRCA1, BRCA2, APC, TP53), "
-                              "other reported mutations, smoking and family history."),
+        ("Enter the patient", "Demographics, the four main genes (BRCA1, BRCA2, APC, TP53), "
+                              "14 other known cancer genes (PALB2, CHEK2, Lynch genes...), "
+                              "smoking and family history."),
         ("Rule-based score", "Hand-weighted points for each factor, plus 1,500 Monte Carlo runs "
                              "to show how certain the estimate is (90% range)."),
-        ("Machine-learning models", "Logistic regression, a random forest and a 9-qubit quantum "
+        ("Machine-learning models", "Logistic regression, a random forest and a 10-qubit quantum "
                                     "kernel SVM predict 20-year risk; the logistic regression "
                                     "explains which factors drive it."),
         ("AI summary and report", "Gemini turns de-identified results into plain-language "

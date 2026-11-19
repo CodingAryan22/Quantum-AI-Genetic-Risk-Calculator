@@ -67,6 +67,7 @@ def reference_risk(patient_data: dict) -> float:
     return synthetic_data.true_risk(
         {m: x[m] >= 0.5 for m in MARKERS}, x["Female"], x["Age"], int(x["Smoking"]),
         int(x["First-degree relatives"]), int(x["Second-degree relatives"]),
+        x["Other gene risk"],
     )
 
 

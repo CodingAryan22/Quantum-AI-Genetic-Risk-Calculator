@@ -13,9 +13,23 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT / "final_app" / "data" / "synthetic_patients.csv"
 METRICS_PATH = ROOT / "final_app" / "models" / "metrics.json"
 
-# Same order as final_app/ml/schema.py FEATURES.
-FEATURES = ["BRCA1", "BRCA2", "APC", "TP53", "Female", "Age", "Smoking",
-            "First-degree relatives", "Second-degree relatives"]
+# Same order as final_app/ml/schema.py FEATURES. Read from the CSV header, so a
+# feature added to the app's dataset is picked up here automatically.
+_NOT_FEATURES = {"Patient_ID", "Other genes", "True Risk", "Outcome"}
+_FALLBACK = ["BRCA1", "BRCA2", "APC", "TP53", "Other gene risk", "Female", "Age", "Smoking",
+             "First-degree relatives", "Second-degree relatives"]
+
+
+def _read_features() -> list[str]:
+    try:
+        with DATA_PATH.open(encoding="utf-8") as f:
+            header = f.readline().strip().split(",")
+        return [c for c in header if c not in _NOT_FEATURES]
+    except OSError:
+        return _FALLBACK
+
+
+FEATURES = _read_features()
 
 DEFAULT_SCALE = 0.1  # the web app's tuned value; replaced by metrics.json when present
 

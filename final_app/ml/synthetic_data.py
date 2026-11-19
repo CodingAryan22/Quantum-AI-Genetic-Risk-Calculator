@@ -22,13 +22,16 @@ How the true risk is built
      - APC: GeneReviews, close to 100% colorectal cancer in classic FAP
        without preventive surgery (lowered here because many have surgery)
      - TP53: GeneReviews, at least 90% (women) / 70% (men) for any cancer
+     - other genes (PALB2, CHEK2, ATM, PTEN, CDH1, STK11, Lynch genes,
+       RAD51C/D, BRIP1, MUTYH): published figures listed in genes.py
    Several mutations combine as independent risks.
 2. Modelling ASSUMPTIONS (not published effect sizes, chosen to be plausible):
      - each affected 1st-degree relative multiplies the hazard by 1.6 (max 3)
      - each affected 2nd-degree relative multiplies it by 1.2 (max 3)
      - current smoking x1.4, former smoking x1.15
 3. The lifetime hazard is spread over age with a Weibull age-of-onset curve
-   (carriers get cancer earlier: scale 55 years vs 72), and the 20-year risk
+   (carriers of a high-penetrance gene, lifetime risk >= 40%, get cancer
+   earlier: scale 55 years vs 72), and the 20-year risk
    is the share of that hazard falling between the current age and age + 20.
 
 The cohort is "enriched" like a genetics-clinic referral population: mutation
@@ -44,7 +47,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .schema import FEATURES, MARKERS
+from .schema import FEATURES, MARKERS, OTHER_GENE_RISK
+
+try:
+    import genes
+except ModuleNotFoundError:  # imported as final_app.ml.synthetic_data
+    from .. import genes
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "synthetic_patients.csv"
 
@@ -59,6 +67,13 @@ LIFETIME_RISK = {
 
 # Share of patients carrying each mutation in the enriched cohort.
 CARRIER_RATE = {"BRCA1": 0.07, "BRCA2": 0.07, "APC": 0.03, "TP53": 0.02}
+
+# Share carrying each other gene (about 11% carry at least one), also enriched.
+OTHER_CARRIER_RATE = {
+    "PALB2": 0.015, "CHEK2": 0.02, "ATM": 0.015, "PTEN": 0.003, "CDH1": 0.003,
+    "STK11": 0.002, "MLH1": 0.008, "MSH2": 0.008, "MSH6": 0.008, "PMS2": 0.008,
+    "RAD51C": 0.004, "RAD51D": 0.004, "BRIP1": 0.005, "MUTYH": 0.005,
+}
 
 RR_FIRST_DEGREE = 1.6
 RR_SECOND_DEGREE = 1.2
@@ -76,8 +91,11 @@ def _onset_cdf(age, scale):
 
 
 def true_risk(markers: dict, female: float, age: float, smoking: int,
-              first_degree: int, second_degree: int) -> float:
-    """20-year risk for one patient under the model described above."""
+              first_degree: int, second_degree: int, other_risk: float = 0.0) -> float:
+    """
+    20-year risk for one patient under the model described above.
+    other_risk: combined lifetime risk of the patient's other genes (genes.combined_risk).
+    """
     sex = 0 if female >= 0.5 else 1
     survival = 1.0 - LIFETIME_RISK["none"][sex]
     carrier = False
@@ -85,6 +103,9 @@ def true_risk(markers: dict, female: float, age: float, smoking: int,
         if markers.get(m):
             survival *= 1.0 - LIFETIME_RISK[m][sex]
             carrier = True
+    if other_risk > 0:
+        survival *= 1.0 - other_risk
+        carrier = carrier or other_risk >= genes.HIGH_PENETRANCE
     lifetime_hazard = -np.log(max(survival, 1e-6))
 
     lifetime_hazard *= RR_FIRST_DEGREE ** min(first_degree, 3)
@@ -104,9 +125,13 @@ def generate(n: int = 2000, seed: int = 42) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
 
     carriers = {m: rng.random(n) < CARRIER_RATE[m] for m in MARKERS}
+    others = {g: rng.random(n) < OTHER_CARRIER_RATE[g] for g in genes.OTHER_GENES}
     any_carrier = np.zeros(n, dtype=bool)
     for m in MARKERS:
         any_carrier |= carriers[m]
+    for g, has in others.items():
+        if max(genes.OTHER_GENES[g]["lifetime"]) >= genes.HIGH_PENETRANCE:
+            any_carrier |= has
 
     female = (rng.random(n) < 0.55).astype(float)
     age = np.clip(rng.normal(48, 14, n), 18, 85).round()
@@ -115,7 +140,10 @@ def generate(n: int = 2000, seed: int = 42) -> pd.DataFrame:
     first = np.clip(rng.poisson(np.where(any_carrier, 1.0, 0.35)), 0, 4)
     second = np.clip(rng.poisson(np.where(any_carrier, 1.3, 0.6)), 0, 5)
 
+    other_lists = [[g for g in genes.OTHER_GENES if others[g][i]] for i in range(n)]
     df = pd.DataFrame({m: carriers[m].astype(int) for m in MARKERS})
+    df[OTHER_GENE_RISK] = [genes.combined_risk(lst, f) for lst, f in zip(other_lists, female)]
+    df["Other genes"] = [";".join(lst) for lst in other_lists]
     df["Female"] = female
     df["Age"] = age
     df["Smoking"] = smoking
@@ -124,12 +152,12 @@ def generate(n: int = 2000, seed: int = 42) -> pd.DataFrame:
 
     df["True Risk"] = [
         true_risk({m: r[m] for m in MARKERS}, r["Female"], r["Age"], r["Smoking"],
-                  r["First-degree relatives"], r["Second-degree relatives"])
+                  r["First-degree relatives"], r["Second-degree relatives"], r[OTHER_GENE_RISK])
         for _, r in df.iterrows()
     ]
     df["Outcome"] = (rng.random(n) < df["True Risk"]).astype(int)
     df.insert(0, "Patient_ID", [f"S{i:05d}" for i in range(1, n + 1)])
-    return df[["Patient_ID"] + FEATURES + ["True Risk", "Outcome"]]
+    return df[["Patient_ID"] + FEATURES + ["Other genes", "True Risk", "Outcome"]]
 
 
 def main():
@@ -138,7 +166,8 @@ def main():
     df.round({"True Risk": 4}).to_csv(DATA_PATH, index=False)
     print(f"Wrote {len(df)} patients to {DATA_PATH}")
     print(f"Outcome rate: {df['Outcome'].mean():.1%}  |  "
-          f"carriers: {(df[MARKERS].sum(axis=1) > 0).mean():.1%}")
+          f"main-gene carriers: {(df[MARKERS].sum(axis=1) > 0).mean():.1%}  |  "
+          f"other-gene carriers: {(df[OTHER_GENE_RISK] > 0).mean():.1%}")
 
 
 if __name__ == "__main__":

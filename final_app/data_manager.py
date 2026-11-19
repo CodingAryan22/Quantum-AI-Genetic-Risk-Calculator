@@ -1,6 +1,7 @@
 import re
 
 import streamlit as st
+import genes
 import ui_modules
 
 # Session key that holds the current "form generation" number. Every widget in
@@ -32,23 +33,9 @@ FORM_FIELDS = [
 ]
 
 # Suggestions for the "Other mutations" box, with the cancers each gene is best
-# known for (shown in the dropdown). Users can also type any other gene.
-MARKER_INFO = {
-    "PALB2": "Breast/Pancreatic Cancer Risk",
-    "CHEK2": "Breast/Colorectal Cancer Risk",
-    "ATM": "Breast/Pancreatic Cancer Risk",
-    "PTEN": "Cowden Syndrome: Breast/Thyroid/Uterine",
-    "CDH1": "Diffuse Gastric/Lobular Breast Cancer Risk",
-    "STK11": "Peutz-Jeghers Syndrome: GI/Pancreatic/Breast",
-    "MLH1": "Lynch Syndrome: Colorectal/Endometrial",
-    "MSH2": "Lynch Syndrome: Colorectal/Endometrial",
-    "MSH6": "Lynch Syndrome: Colorectal/Endometrial",
-    "PMS2": "Lynch Syndrome: Colorectal/Endometrial",
-    "RAD51C": "Ovarian/Breast Cancer Risk",
-    "RAD51D": "Ovarian/Breast Cancer Risk",
-    "BRIP1": "Ovarian Cancer Risk",
-    "MUTYH": "MUTYH Polyposis: Colorectal Cancer Risk",
-}
+# known for (shown in the dropdown). Users can also type any other gene; genes
+# not in genes.OTHER_GENES are recorded but carry no weight in the score.
+MARKER_INFO = {gene: info["cancers"] for gene, info in genes.OTHER_GENES.items()}
 SUGGESTED_MARKERS = list(MARKER_INFO)
 
 
@@ -124,11 +111,14 @@ def collect_patient() -> dict:
         marker = marker.strip()
         if not marker:
             continue
-        # Typing one of the four scored genes counts as ticking its checkbox.
+        # Typing one of the four main genes counts as ticking its checkbox.
         if marker.upper() in core:
             core[marker.upper()] = True
-        elif marker.lower() not in {m.lower() for m in extra}:
-            extra.append(marker)
+        else:
+            # Known genes are stored in their standard spelling ("palb2" -> "PALB2").
+            marker = genes.canonical(marker) or marker
+            if marker.lower() not in {m.lower() for m in extra}:
+                extra.append(marker)
 
     return {
         "Name": _val("name", ""),
@@ -312,7 +302,8 @@ def _step_markers():
             format_func=marker_label,
             placeholder="Type a gene (e.g. PALB2) and press Enter",
             help="Pick from the list or type any mutation and press Enter to add it. "
-            "These are included in the report and AI summary but not in the numeric score.",
+            "Genes in the list add to the risk score using published lifetime risks. "
+            "Other typed genes are recorded but not scored.",
             key=_wk("other_markers"),
         )
 

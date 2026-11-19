@@ -5,9 +5,11 @@ import plotly.graph_objects as go
 try:
     # `streamlit run final_app.py` loads the app's modules as top-level modules.
     from features import normalize_marker_status as _normalize_marker_status
+    import genes
 except ModuleNotFoundError:
     # Imported as `final_app.quantum_engine` (e.g. from the tests).
     from .features import normalize_marker_status as _normalize_marker_status
+    from . import genes
 
 
 # Points per affected relative, counting at most FAMILY_MAX_COUNTED of each kind.
@@ -26,8 +28,8 @@ def family_history_points(patient_data: dict) -> float:
 
 def calculate_deterministic_risk(patient_data: dict) -> float:
     """
-    Rule-based (hand-weighted) risk score in %: genes, age, smoking and family
-    history. Not trained on data; the ML models in ml/ are compared against it.
+    Rule-based (hand-weighted) risk score in %: genes (the four main ones plus
+    other known genes from genes.py), age, smoking and family history. Not trained on data; the ML models in ml/ are compared against it.
     """
     base_risk = 5.0
 
@@ -45,6 +47,12 @@ def calculate_deterministic_risk(patient_data: dict) -> float:
             base_risk += weight
         elif status == "Inconclusive":
             base_risk += max(weight * 0.12, 2.0)
+
+    # Other reported genes with published risk figures (see genes.py). Genes the
+    # app has no figures for are recorded but add nothing.
+    known_other, _ = genes.split_known(patient_data.get("Other Genetic Markers"))
+    for gene in known_other:
+        base_risk += genes.rule_points(gene)
     # The form sends None when Age is left blank, so fall back to 0.
     age = patient_data.get("Age") or 0
     if isinstance(age, str):

@@ -1,7 +1,7 @@
 """
 Quantum kernel built with Qiskit.
 
-Each patient's 9 features are loaded into a 9-qubit circuit with Qiskit's ZZ
+Each patient's 10 features are loaded into a 10-qubit circuit with Qiskit's ZZ
 feature map (one qubit per feature, entangling ZZ rotations between every
 pair, repeated twice). The kernel between two patients is the fidelity of
 their quantum states:
@@ -12,7 +12,7 @@ A classical support vector machine then uses this kernel (a "quantum kernel
 SVM", the same model as Qiskit Machine Learning's QSVC).
 
 The circuits are simulated exactly with Qiskit's Statevector. Each patient's
-state is computed once (2^9 = 512 amplitudes), so the whole kernel matrix is
+state is computed once (2^10 = 1,024 amplitudes), so the whole kernel matrix is
 one matrix product instead of n^2 separate circuit runs.
 """
 

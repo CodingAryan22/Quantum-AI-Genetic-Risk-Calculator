@@ -1,7 +1,7 @@
 """
 The quantum circuits.
 
-Feature map: Qiskit's ZZ feature map, one qubit per patient feature (9 qubits),
+Feature map: Qiskit's ZZ feature map, one qubit per patient feature (10 qubits),
 the same circuit the web app's quantum kernel SVM uses.
 
 Kernel circuit: to measure the similarity of two patients x and y on real
@@ -22,7 +22,9 @@ from qiskit import QuantumCircuit
 from qiskit.circuit.library import zz_feature_map
 from qiskit.quantum_info import Statevector
 
-NUM_FEATURES = 9
+from .data import FEATURES
+
+NUM_FEATURES = len(FEATURES)
 REPS = 2
 ENTANGLEMENT = "full"
 

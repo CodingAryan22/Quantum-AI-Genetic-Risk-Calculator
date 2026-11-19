@@ -10,7 +10,7 @@ Examples (run from the quantum_ready folder):
 
 For each backend it:
   1. picks a small stratified set of synthetic patients (train / test),
-  2. scales their 9 features to rotation angles exactly as the web app does,
+  2. scales their 10 features to rotation angles exactly as the web app does,
   3. measures the quantum kernel (patient similarity) with fidelity circuits,
   4. trains an SVM on that kernel and scores the test patients (AUC),
   5. repeats 3-4 with the exact kernel, and reports how far the backend is off.

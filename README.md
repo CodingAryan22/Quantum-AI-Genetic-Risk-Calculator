@@ -1,8 +1,8 @@
 # RiskPredict: Hereditary Cancer Risk Prediction
 
 A Streamlit web app that estimates a patient's hereditary cancer risk from
-genetic markers (BRCA1, BRCA2, APC, TP53), family history, age, sex and
-smoking. It compares a rule-based clinical score with classical and **quantum**
+genetic markers (BRCA1, BRCA2, APC, TP53 plus 14 other known cancer genes such as
+PALB2, CHEK2 and the Lynch syndrome genes), family history, age, sex and smoking. It compares a rule-based clinical score with classical and **quantum**
 machine-learning models, explains what drives each prediction, and turns the
 results into a plain-language summary with Google Gemini.
 
@@ -16,10 +16,11 @@ results into a plain-language summary with Google Gemini.
 - **Lab report reader:** upload a PDF genetic test report and the genes it reports (pathogenic, VUS, negative) are found automatically and can be applied to the form. Try `samples/sample_lab_report.pdf` (fictional). Scanned image-only PDFs can't be read.
 - **Patient records in MongoDB:** every assessment is saved; the records page lists patients with their risk history and linked diseases
 - **Rule-based score** with 1,500-run **Monte Carlo** uncertainty (mean and 90% interval)
+- **18 scored genes:** BRCA1, BRCA2, APC and TP53, plus PALB2, CHEK2, ATM, PTEN, CDH1, STK11, MLH1, MSH2, MSH6, PMS2, RAD51C, RAD51D, BRIP1 and MUTYH, weighted by published lifetime risks (`final_app/genes.py`). A gene typed in that isn't on the list is recorded but marked "not scored".
 - **Three trained models** predicting 20-year risk:
   - Logistic regression
   - Random forest
-  - **Quantum kernel SVM**: 9-qubit Qiskit ZZ feature map with a state-fidelity kernel
+  - **Quantum kernel SVM**: 10-qubit Qiskit ZZ feature map with a state-fidelity kernel
 - **Explainability:** exact per-patient factor contributions from the logistic regression
 - **Model comparison tab:** AUC, cross-validated AUC, Brier score, sensitivity, specificity, F1, ROC curves, timings, feature importance
 - **Privacy:** the AI only receives de-identified data (no name, age band instead of exact age, emails, phone numbers and IDs scrubbed from notes)
@@ -81,27 +82,33 @@ python -m ml.train            # trains all models, writes models/*.joblib + mode
 
 | Model | Test AUC (95% CI) | 5-fold CV AUC | Brier | Sensitivity | Specificity | F1 |
 |---|---|---|---|---|---|---|
-| Rule-based score | 0.761 (0.695–0.823) | – | 0.114 | 67% | 74% | 0.46 |
-| Logistic regression | 0.781 (0.718–0.835) | 0.753 | 0.104 | 59% | 88% | 0.55 |
-| Random forest | **0.810** (0.753–0.862) | **0.790** | 0.104 | 64% | 82% | 0.51 |
-| Quantum kernel SVM | 0.755 (0.688–0.816) | 0.757 | 0.108 | 53% | 91% | 0.54 |
+| Rule-based score | 0.762 (0.706–0.819) | – | 0.134 | 72% | 70% | 0.51 |
+| Logistic regression | 0.764 (0.702–0.820) | **0.786** | 0.127 | 64% | 82% | 0.56 |
+| Random forest | 0.768 (0.708–0.821) | 0.775 | 0.129 | 68% | 78% | 0.54 |
+| Quantum kernel SVM | **0.785** (0.732–0.838) | 0.748 | 0.127 | 60% | 86% | 0.56 |
 
 **Are the differences real?** A paired bootstrap (2,000 resamples of the test patients,
 every model scored on the same resample) gives a 95% interval for each AUC gap:
 
-| Random forest vs | AUC gap | 95% interval | p | Verdict |
+| Quantum kernel SVM vs | AUC gap | 95% interval | p | Verdict |
 |---|---|---|---|---|
-| Quantum kernel SVM | +0.055 | +0.018 to +0.096 | < 0.001 | real difference |
-| Rule-based score | +0.050 | +0.006 to +0.090 | 0.023 | real difference |
-| Logistic regression | +0.030 | −0.010 to +0.066 | 0.127 | could be chance |
+| Random forest | +0.017 | −0.016 to +0.052 | 0.301 | could be chance |
+| Logistic regression | +0.021 | −0.016 to +0.059 | 0.279 | could be chance |
+| Rule-based score | +0.022 | −0.019 to +0.064 | 0.274 | could be chance |
 
-The best AUC any model could reach on this data (using the true simulated risk) is **0.805**.
+The best AUC any model could reach on this data (using the true simulated risk) is **0.800**.
 Sensitivity, specificity and F1 count a predicted risk ≥ 20% as "at risk".
 
 **What the results show:**
-- The random forest does best because it captures the gene × age interaction built into the data. Its lead over the quantum model and the rule-based score is statistically real; its lead over logistic regression is not (the interval includes zero).
-- The quantum kernel SVM is competitive with logistic regression, but it doesn't beat the classical models.
+- All four approaches perform about the same: every gap is inside its 95% interval, so no model is shown to be better. The quantum kernel SVM has the highest test AUC, but logistic regression has the highest cross-validated AUC, and the two rankings disagree because the differences are small.
+- All models are close to the best possible AUC (0.800), because the outcome is drawn at random from each patient's risk.
+- The new "other gene risk" feature is among the most important in both the logistic regression and the random forest.
 - Cross-validation picked very small rotation angles for the quantum model. That's when its kernel behaves most like a smooth classical kernel, which matches published findings that quantum kernels rarely help on small, low-dimensional tabular data.
+
+**How the other genes enter the models:** one per-gene feature would need one qubit per gene (24 qubits),
+far too many to simulate. Instead each patient's other genes are combined into one feature,
+`Other gene risk` = 1 − Π(1 − lifetime risk of each gene, for the patient's sex), so the models
+have 10 features and the quantum circuit 10 qubits.
 
 ## Quantum hardware readiness
 
@@ -114,11 +121,11 @@ real IBM Quantum hardware once an API key is added. It is kept separate from the
 
 See `final_app/ml/synthetic_data.py` for the full description. In short:
 
-1. **Lifetime risk to age 80** for each gene and sex comes from published figures: NCI (BRCA1/2), GeneReviews (APC, TP53) and SEER (general population).
+1. **Lifetime risk to age 80** for each gene and sex comes from published figures: NCI (BRCA1/2), GeneReviews (APC, TP53, the 14 other genes), NCCN guidelines and SEER (general population).
 2. **Assumed multipliers** (not published effect sizes) are applied for family history and smoking.
 3. A **Weibull age-of-onset curve** turns lifetime risk into the risk over the next 20 years. Carriers develop cancer earlier.
 4. Each outcome (0/1) is drawn at random from that risk.
-5. The cohort is enriched with mutation carriers (about 18%), like a genetics-clinic population.
+5. The cohort is enriched with mutation carriers (about 18% carry a main gene and 11% another gene), like a genetics-clinic population.
 
 ## Project structure
 
@@ -133,8 +140,9 @@ final_app/
   pdf_builder.py      PDF report
   ui_modules.py       theme, cards, charts, tables
   features.py         marker status normalisation
+  genes.py            the 14 other genes: published lifetime risks, rule points, combined risk
   ml/
-    schema.py         the 9 model features; form -> feature vector
+    schema.py         the 10 model features; form -> feature vector
     synthetic_data.py synthetic cohort generator
     quantum_kernel.py Qiskit feature map, fidelity kernel, QuantumKernelSVM
     train.py          training, evaluation, metrics.json
