@@ -140,3 +140,11 @@ def test_all_patients_pdf_is_a_valid_pdf():
     patients = storage.group_patients([_record("Jane Smith", 30, now), _record("Raj Mehta", 55, now)])
     pdf = pdf_builder.generate_all_patients_pdf(patients)
     assert pdf.startswith(b"%PDF") and len(pdf) > 2000
+
+
+def test_update_summary_local_and_mongo(tmp_path, mongo_store):
+    for store in (storage.LocalStore(tmp_path / "records.json"), mongo_store):
+        record_id = store.save({**_record("Jane Smith"), "summary_source": "fallback"})
+        assert store.update_summary(record_id, "AI text", "ai")
+        saved = store.all_records()[0]
+        assert saved["summary"] == "AI text" and saved["summary_source"] == "ai"

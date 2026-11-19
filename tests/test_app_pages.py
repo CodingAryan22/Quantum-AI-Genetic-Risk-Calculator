@@ -24,7 +24,8 @@ PATIENT = {
 @pytest.fixture(autouse=True)
 def no_gemini(monkeypatch):
     """Never call the real Gemini API from tests."""
-    monkeypatch.setattr(ai_synthesizer, "generate_report", lambda *a, **k: "Test summary.")
+    monkeypatch.setattr(ai_synthesizer, "generate_summary", lambda *a, **k: {
+        "text": "Test summary.", "source": "ai", "model": "test", "notice": None})
 
 
 @pytest.fixture(autouse=True)
@@ -159,3 +160,24 @@ def test_results_page_runs_a_queued_analysis_and_saves_it():
     assert [t.label for t in at.tabs] == ["Overview", "Models", "Details"]
     store, _ = views.get_store()
     assert [r["patient"]["name"] for r in store.all_records()] == ["Test Patient"]
+
+
+def test_retry_ai_summary_replaces_the_standard_summary(monkeypatch):
+    # First run: the AI is down, so the standard summary is used and saved.
+    monkeypatch.setattr(ai_synthesizer, "generate_summary", lambda *a, **k: {
+        "text": "Standard text.", "source": "fallback", "model": None,
+        "notice": "AI summary unavailable: the free Gemini daily limit has been used up."})
+    at = _page("results", {views.PENDING_KEY: PATIENT})
+    assert any(b.label == "Retry AI summary" for b in at.button)
+    store, _ = views.get_store()
+    assert store.all_records()[0]["summary_source"] == "fallback"
+
+    # Retry once the AI works again: page, PDF and saved record all update.
+    monkeypatch.setattr(ai_synthesizer, "generate_summary", lambda *a, **k: {
+        "text": "Fresh AI text.", "source": "ai", "model": "test", "notice": None})
+    _button(at, "Retry AI summary").click().run()
+    assert not at.exception, at.exception
+    assert at.session_state[views.RESULTS_KEY]["summary"] == "Fresh AI text."
+    assert not any(b.label == "Retry AI summary" for b in at.button)
+    saved = store.all_records()[0]
+    assert saved["summary"] == "Fresh AI text." and saved["summary_source"] == "ai"

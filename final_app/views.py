@@ -68,17 +68,20 @@ def run_analysis(patient_data: dict, on_step=None) -> dict:
         step("Scoring with logistic regression, random forest and the quantum model")
         model_preds = predictor.predict_all(models, patient_data)
         explanation = predictor.explain(models, patient_data)
-    step("Writing the AI clinical summary (this can take a few seconds)")
-    ai_summary = ai_synthesizer.generate_report(patient_data, risk_table, model_preds)
+    step("Writing the AI clinical summary (usually 5-20 seconds)")
+    summary = ai_synthesizer.generate_summary(patient_data, risk_table, model_preds)
     step("Building the PDF report")
-    pdf_bytes = pdf_builder.generate_pdf(patient_data, risk_table, ai_summary, model_preds)
+    pdf_bytes = pdf_builder.generate_pdf(patient_data, risk_table, _pdf_summary(summary), model_preds)
 
     row = risk_table.iloc[0]
     ci_low, ci_high = (float(v) for v in re.findall(r"[\d.]+", row["90% Confidence Interval"]))
     return {
         "patient": patient_data,
         "plot": risk_plot,
-        "summary": ai_summary,
+        "risk_table": risk_table,
+        "summary": summary["text"],
+        "summary_source": summary["source"],    # "ai" or "fallback"
+        "summary_notice": summary["notice"],    # why the AI summary is missing, if it is
         "pdf": pdf_bytes,
         "base_str": row["Base Deterministic Risk"],
         "base": float(row["Base Deterministic Risk"].rstrip("%")),
@@ -88,6 +91,35 @@ def run_analysis(patient_data: dict, on_step=None) -> dict:
         "explanation": explanation,
         "reference": reference_risk(patient_data),
     }
+
+
+def _pdf_summary(summary: dict) -> str:
+    """Summary text for the PDF, labelled when it is the standard (non-AI) version."""
+    if summary["source"] == "ai":
+        return summary["text"]
+    return "Standard summary (the AI service was unavailable).\n\n" + summary["text"]
+
+
+def retry_ai_summary():
+    """Button callback: try the AI summary again for the current result."""
+    res = st.session_state.get(RESULTS_KEY)
+    if not res:
+        return
+    summary = ai_synthesizer.generate_summary(res["patient"], res["risk_table"], res.get("models"))
+    if summary["source"] != "ai":
+        res["summary_notice"] = summary["notice"]
+        st.session_state["_toast"] = "The AI summary is still unavailable."
+        return
+    res.update(summary=summary["text"], summary_source="ai", summary_notice=None)
+    res["pdf"] = pdf_builder.generate_pdf(res["patient"], res["risk_table"], summary["text"],
+                                          res.get("models"))
+    if res.get("record_id"):
+        store, _ = get_store()
+        try:
+            store.update_summary(res["record_id"], summary["text"], "ai")
+        except Exception:
+            pass  # the on-screen result and PDF are updated even if the record isn't
+    st.session_state["_toast"] = "AI summary added."
 
 
 @st.cache_resource(show_spinner="Connecting to the database…")
@@ -101,7 +133,7 @@ def save_assessment(patient_data: dict, results: dict):
     store, _ = get_store()
     tier, _ = ui_modules.risk_level(results["mean"])
     try:
-        store.save(storage.build_record(patient_data, results, tier))
+        results["record_id"] = store.save(storage.build_record(patient_data, results, tier))
         st.session_state["_saved_to"] = store.name
     except Exception as exc:
         st.session_state["_save_error"] = f"Could not save this assessment: {exc}"
@@ -218,11 +250,20 @@ def results():
         ui_modules.risk_banner(res["mean"])
         ui_modules.headline_card(res["mean"], *res["ci"], res.get("models"))
         with ui_modules.card("summary"):
+            from_ai = res.get("summary_source", "ai") == "ai"
             ui_modules.card_header(
-                "AI clinical summary",
-                "Plain-language interpretation, written from de-identified data.",
-                right_html="",
+                "AI clinical summary" if from_ai else "Clinical summary",
+                "Plain-language interpretation, written from de-identified data." if from_ai
+                else "Standard summary from fixed guidance; the AI summary wasn't available.",
+                right_html="" if from_ai else ui_modules.badge("Standard", "warn", dot=True),
             )
+            if not from_ai:
+                note_col, retry_col = st.columns([3, 1], vertical_alignment="center")
+                with note_col:
+                    ui_modules.hint("Why:", res.get("summary_notice") or "The AI service didn't respond.")
+                with retry_col:
+                    st.button("Retry AI summary", icon=":material/refresh:", width="stretch",
+                              key="retry-ai", on_click=retry_ai_summary)
             st.markdown(res["summary"])
 
     with models_tab:
@@ -476,7 +517,9 @@ def _patient_history_card(store, p: dict, i: int):
 
         latest = p["history"][0]
         if latest.get("summary"):
-            with st.expander("Latest AI clinical summary"):
+            label = ("Latest AI clinical summary" if latest.get("summary_source", "ai") == "ai"
+                     else "Latest clinical summary (standard, AI was unavailable)")
+            with st.expander(label):
                 st.markdown(latest["summary"])
         if latest["patient"].get("notes"):
             with st.expander("Clinical notes"):

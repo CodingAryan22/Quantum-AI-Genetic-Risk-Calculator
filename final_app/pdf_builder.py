@@ -213,7 +213,9 @@ def _write_patient_history(pdf, patient: dict):
     pdf.ln(5)
 
     if latest.get("summary"):
-        _section(pdf, ' 4. Latest AI-Generated Clinical Summary')
+        _section(pdf, ' 4. Latest AI-Generated Clinical Summary'
+                 if latest.get("summary_source", "ai") == "ai"
+                 else ' 4. Latest Clinical Summary (standard; AI was unavailable)')
         pdf.multi_cell(0, 6, _pdf_text(_strip_markdown(latest["summary"])))
         pdf.ln(3)
 

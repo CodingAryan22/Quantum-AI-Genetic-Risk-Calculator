@@ -96,6 +96,7 @@ def build_record(patient: dict, results: dict, tier: str) -> dict:
             "reference": results.get("reference"),
         },
         "summary": results.get("summary") or "",
+        "summary_source": results.get("summary_source", "ai"),  # "ai" or "fallback"
     }
 
 
@@ -145,6 +146,13 @@ class MongoStore:
     def save(self, record: dict) -> str:
         return str(self.col.insert_one(dict(record)).inserted_id)
 
+    def update_summary(self, record_id: str, text: str, source: str) -> bool:
+        from bson import ObjectId
+
+        done = self.col.update_one({"_id": ObjectId(record_id)},
+                                   {"$set": {"summary": text, "summary_source": source}})
+        return done.modified_count == 1
+
     def all_records(self) -> list[dict]:
         records = list(self.col.find({}).sort("created_at", -1))
         for r in records:
@@ -187,6 +195,15 @@ class LocalStore:
         records.append(record)
         self._write(records)
         return record["_id"]
+
+    def update_summary(self, record_id: str, text: str, source: str) -> bool:
+        records = self._read()
+        for r in records:
+            if r.get("_id") == record_id:
+                r.update(summary=text, summary_source=source)
+                self._write(records)
+                return True
+        return False
 
     def all_records(self) -> list[dict]:
         return sorted(self._read(), key=lambda r: r["created_at"], reverse=True)

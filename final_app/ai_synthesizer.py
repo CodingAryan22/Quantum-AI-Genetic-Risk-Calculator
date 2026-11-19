@@ -135,25 +135,114 @@ def build_prompt(patient_data: dict, risk_table, model_predictions: dict | None 
     """
 
 
-def generate_report(patient_data: dict, risk_table, model_predictions: dict | None = None) -> str:
+DEFAULT_MODELS = ["gemini-2.5-flash", "gemini-flash-lite-latest"]
+REQUEST_TIMEOUT_S = 25  # per model attempt
+
+
+def _models() -> list[str]:
+    """Models to try in order; override with GEMINI_MODELS = "a,b" in secrets or env."""
+    try:
+        raw = st.secrets.get("GEMINI_MODELS") or os.environ.get("GEMINI_MODELS")
+    except Exception:
+        raw = os.environ.get("GEMINI_MODELS")
+    return [m.strip() for m in raw.split(",") if m.strip()] if raw else DEFAULT_MODELS
+
+
+def _describe_error(exc: Exception) -> str:
+    """A short, accurate reason for the user (daily vs per-minute quota, etc.)."""
+    msg = str(exc)
+    if "429" in msg or "ResourceExhausted" in type(exc).__name__ or "quota" in msg.lower():
+        wait = re.search(r"retry_delay\s*{\s*seconds:\s*(\d+)", msg)
+        seconds = int(wait.group(1)) if wait else None
+        if "PerDay" in msg:
+            when = f" It resets in about {max(1, round(seconds / 3600))} hours." if seconds else ""
+            return f"the free Gemini daily limit has been used up.{when}"
+        when = f" Try again in about {seconds} seconds." if seconds else " Try again in a minute."
+        return f"the free Gemini per-minute limit was reached.{when}"
+    if "API key" in msg or "API_KEY" in msg:
+        return "the Gemini API key was rejected."
+    if "DeadlineExceeded" in type(exc).__name__ or "timed out" in msg.lower() or "504" in msg:
+        return "the AI service took too long to respond."
+    return f"the AI service returned an error ({type(exc).__name__})."
+
+
+def fallback_summary(patient_data: dict, risk_table) -> str:
     """
-    Generates an educational clinical summary explaining detected disease risks
-    and providing actionable remedial or medical advice based on risk severity.
-    Only de-identified data is sent to Gemini (see build_prompt).
+    A standard summary written from fixed guidance text, used when the AI
+    service is unavailable. Built only from the patient's results.
+    """
+    mean = float(risk_table["Simulated Mean"].iloc[0].replace("%", ""))
+    ci = risk_table["90% Confidence Interval"].iloc[0]
+    markers = positive_markers(patient_data)
+    others = list(patient_data.get("Other Genetic Markers") or [])
+    family = patient_data.get("Family History", {}) or {}
+    first, second = family.get("First-degree", 0) or 0, family.get("Second-degree", 0) or 0
+    smoking = patient_data.get("Smoking History") or "Never Smoked"
+
+    findings = []
+    if markers:
+        findings.append("Your results show a change in " + "; ".join(
+            MARKER_INFO[m].replace(" (", ", which is ").rstrip(")") for m in markers if m in MARKER_INFO) + ".")
+    else:
+        findings.append("None of the four scored genes (BRCA1, BRCA2, APC, TP53) showed a harmful change.")
+    if others:
+        findings.append(f"Other reported changes ({', '.join(others)}) are noted for your doctor "
+                        "but are not part of the numeric score.")
+    if first or second:
+        findings.append(f"You reported {first} close (first-degree) and {second} second-degree "
+                        "relatives with cancer, which raises hereditary risk.")
+    if smoking != "Never Smoked":
+        findings.append(f"Smoking history ({smoking.lower()}) also adds to the overall risk.")
+    lo, hi = (float(v) for v in re.findall(r"[\d.]+", ci)[:2])
+    para1 = (f"Your estimated risk is about {mean:.0f}% (likely between {lo:.0f}% and {hi:.0f}%). "
+             + " ".join(findings))
+
+    if mean >= 50:
+        para2 = ("This is a high-risk result. Please arrange a full clinical evaluation soon with a "
+                 "specialist such as a medical geneticist, oncologist or genetic counselor, who can "
+                 "confirm these findings and plan diagnostic tests and ongoing management.")
+    elif mean >= 20:
+        para2 = ("This is a moderate risk. Talk to your doctor about earlier or more frequent "
+                 "screening suited to these genes (for example mammograms or colonoscopy), and "
+                 "consider genetic counseling. Not smoking, staying active and a balanced diet "
+                 "also help lower overall risk.")
+    else:
+        para2 = ("This is a low risk. Keep up routine check-ups and the screening recommended for "
+                 "your age, along with a healthy lifestyle. Tell your doctor if your family "
+                 "history changes.")
+    return f"{para1}\n\n{para2}"
+
+
+def generate_summary(patient_data: dict, risk_table, model_predictions: dict | None = None) -> dict:
+    """
+    The clinical summary for one patient. Tries each Gemini model in turn
+    (a model that is out of quota is skipped), then falls back to the
+    standard summary. Only de-identified data is sent (see build_prompt).
+
+    Returns {"text", "source": "ai" | "fallback", "model", "notice"}, where
+    `notice` explains why the AI summary is missing (None when it worked).
     """
     if not configure_api():
-        return "⚠️ **System Notice:** API key not found. Please configure your GEMINI_API_KEY in Streamlit secrets to enable AI Synthesis."
+        return {"text": fallback_summary(patient_data, risk_table), "source": "fallback",
+                "model": None, "notice": "No Gemini API key is configured."}
 
     prompt = build_prompt(patient_data, risk_table, model_predictions)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    reason = None
+    for name in _models():
+        try:
+            # No hidden library retries, and a time limit per model, so a slow or
+            # rate-limited model never leaves the page waiting for minutes.
+            text = genai.GenerativeModel(name).generate_content(
+                prompt, request_options={"retry": None, "timeout": REQUEST_TIMEOUT_S},
+            ).text
+            if text and text.strip():
+                return {"text": text, "source": "ai", "model": name, "notice": None}
+        except Exception as exc:  # quota, network, safety block, removed model...
+            reason = _describe_error(exc)
+    return {"text": fallback_summary(patient_data, risk_table), "source": "fallback",
+            "model": None, "notice": f"AI summary unavailable: {reason or 'no response.'}"}
 
-    try:
-        response = model.generate_content(prompt)
-        return response.text
 
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "Quota" in error_msg:
-            return "⚠️ **API Rate Limit Reached:** You have exceeded the free tier quota. Please wait 60 seconds and try again."
-        else:
-            return f"⚠️ **AI Synthesis Error:** Unable to generate report at this time. ({error_msg})"
+def generate_report(patient_data: dict, risk_table, model_predictions: dict | None = None) -> str:
+    """Summary text only (kept for older callers)."""
+    return generate_summary(patient_data, risk_table, model_predictions)["text"]

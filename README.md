@@ -40,6 +40,12 @@ GEMINI_API_KEY = "your-key"
 
 `secrets.toml` is git-ignored. The rest of the app works without a key.
 
+**Gemini limits.** The free tier allows about 20 requests per day per model. The app tries
+`gemini-2.5-flash` first, then `gemini-flash-lite-latest` (a separate quota). If both are
+unavailable it writes a standard summary from the results instead, labels it clearly, and
+offers a **Retry AI summary** button. To change the order, add
+`GEMINI_MODELS = "model-a,model-b"` to `secrets.toml`.
+
 ## Database (MongoDB)
 
 Every generated assessment is saved to MongoDB, in the `assessments` collection of the
