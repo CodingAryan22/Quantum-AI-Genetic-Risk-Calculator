@@ -13,6 +13,7 @@ results into a plain-language summary with Google Gemini.
 
 - **Six pages** in a sidebar menu: Home, New assessment, Results (Overview / Models / Details tabs), Patient records, Model comparison, About & method
 - **3-step patient form** (Demographics → Markers & history → Notes): Next unlocks only when the step is complete
+- **Lab report reader:** upload a PDF genetic test report and the genes it reports (pathogenic, VUS, negative) are found automatically and can be applied to the form. Try `samples/sample_lab_report.pdf` (fictional). Scanned image-only PDFs can't be read.
 - **Patient records in MongoDB:** every assessment is saved; the records page lists patients with their risk history and linked diseases
 - **Rule-based score** with 1,500-run **Monte Carlo** uncertainty (mean and 90% interval)
 - **Three trained models** predicting 20-year risk:
@@ -78,18 +79,27 @@ python -m ml.train            # trains all models, writes models/*.joblib + mode
 
 ## Results (500 held-out synthetic patients)
 
-| Model | Test AUC | 5-fold CV AUC | Brier | Sensitivity | Specificity | F1 |
+| Model | Test AUC (95% CI) | 5-fold CV AUC | Brier | Sensitivity | Specificity | F1 |
 |---|---|---|---|---|---|---|
-| Rule-based score | 0.761 | – | 0.114 | 67% | 74% | 0.46 |
-| Logistic regression | 0.781 | 0.753 | 0.104 | 59% | 88% | 0.55 |
-| Random forest | **0.810** | **0.790** | 0.104 | 64% | 82% | 0.51 |
-| Quantum kernel SVM | 0.756 | 0.757 | 0.108 | 53% | 91% | 0.54 |
+| Rule-based score | 0.761 (0.695–0.823) | – | 0.114 | 67% | 74% | 0.46 |
+| Logistic regression | 0.781 (0.718–0.835) | 0.753 | 0.104 | 59% | 88% | 0.55 |
+| Random forest | **0.810** (0.753–0.862) | **0.790** | 0.104 | 64% | 82% | 0.51 |
+| Quantum kernel SVM | 0.755 (0.688–0.816) | 0.757 | 0.108 | 53% | 91% | 0.54 |
+
+**Are the differences real?** A paired bootstrap (2,000 resamples of the test patients,
+every model scored on the same resample) gives a 95% interval for each AUC gap:
+
+| Random forest vs | AUC gap | 95% interval | p | Verdict |
+|---|---|---|---|---|
+| Quantum kernel SVM | +0.055 | +0.018 to +0.096 | < 0.001 | real difference |
+| Rule-based score | +0.050 | +0.006 to +0.090 | 0.023 | real difference |
+| Logistic regression | +0.030 | −0.010 to +0.066 | 0.127 | could be chance |
 
 The best AUC any model could reach on this data (using the true simulated risk) is **0.805**.
 Sensitivity, specificity and F1 count a predicted risk ≥ 20% as "at risk".
 
 **What the results show:**
-- The random forest does best because it captures the gene × age interaction built into the data.
+- The random forest does best because it captures the gene × age interaction built into the data. Its lead over the quantum model and the rule-based score is statistically real; its lead over logistic regression is not (the interval includes zero).
 - The quantum kernel SVM is competitive with logistic regression, but it doesn't beat the classical models.
 - Cross-validation picked very small rotation angles for the quantum model. That's when its kernel behaves most like a smooth classical kernel, which matches published findings that quantum kernels rarely help on small, low-dimensional tabular data.
 

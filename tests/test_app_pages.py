@@ -181,3 +181,21 @@ def test_retry_ai_summary_replaces_the_standard_summary(monkeypatch):
     assert not any(b.label == "Retry AI summary" for b in at.button)
     saved = store.all_records()[0]
     assert saved["summary"] == "Fresh AI text." and saved["summary_source"] == "ai"
+
+
+def test_lab_report_findings_can_be_applied_to_the_form():
+    import data_manager
+    import lab_report
+
+    report = lab_report.read_report(
+        open(os.path.join(os.path.dirname(__file__), "..", "samples", "sample_lab_report.pdf"), "rb").read(),
+        data_manager.SCORED_GENES + data_manager.SUGGESTED_MARKERS)
+    at = _page("new_assessment", {"_form_step": 1,
+                                  "_lab_report_findings": {"file_id": "x", "name": "report.pdf", **report}})
+    apply = next(b for b in at.button if b.label.startswith("Apply to form"))
+    assert "BRCA1" in apply.label and "CHEK2" in apply.label
+    apply.click().run()
+    assert not at.exception, at.exception
+    assert at.checkbox(key="brca1_0").value is True       # positive scored gene ticked
+    assert at.checkbox(key="tp53_0").value is False       # VUS not ticked
+    assert "CHEK2" in at.multiselect(key="other_markers_0").value

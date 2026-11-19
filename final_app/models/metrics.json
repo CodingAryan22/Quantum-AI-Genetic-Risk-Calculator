@@ -153,8 +153,12 @@
       "cv_auc": null,
       "cv_auc_std": null,
       "fit_seconds": 0.0,
-      "predict_ms": 0.119,
-      "train_size": 0
+      "predict_ms": 0.179,
+      "train_size": 0,
+      "auc_ci": [
+        0.6951,
+        0.8225
+      ]
     },
     "Logistic regression": {
       "auc": 0.7808,
@@ -331,9 +335,13 @@
       },
       "cv_auc": 0.7531,
       "cv_auc_std": 0.0329,
-      "fit_seconds": 0.005,
+      "fit_seconds": 0.007,
       "predict_ms": 0.002,
-      "train_size": 1500
+      "train_size": 1500,
+      "auc_ci": [
+        0.7182,
+        0.8348
+      ]
     },
     "Random forest": {
       "auc": 0.8104,
@@ -510,9 +518,13 @@
       },
       "cv_auc": 0.7904,
       "cv_auc_std": 0.0237,
-      "fit_seconds": 1.151,
-      "predict_ms": 0.306,
-      "train_size": 1500
+      "fit_seconds": 0.669,
+      "predict_ms": 0.163,
+      "train_size": 1500,
+      "auc_ci": [
+        0.7533,
+        0.862
+      ]
     },
     "Quantum kernel SVM": {
       "auc": 0.7555,
@@ -689,11 +701,48 @@
       },
       "cv_auc": 0.7574,
       "cv_auc_std": 0.0213,
-      "fit_seconds": 0.179,
-      "tuning_seconds": 69.5,
-      "predict_ms": 11.45,
-      "train_size": 1500
+      "fit_seconds": 0.132,
+      "tuning_seconds": 67.4,
+      "predict_ms": 10.794,
+      "train_size": 1500,
+      "auc_ci": [
+        0.6881,
+        0.8164
+      ]
     }
+  },
+  "comparison": {
+    "reference": "Random forest",
+    "pairs": {
+      "Rule-based score": {
+        "diff": 0.0498,
+        "ci": [
+          0.0064,
+          0.0901
+        ],
+        "p": 0.023,
+        "significant": true
+      },
+      "Logistic regression": {
+        "diff": 0.0296,
+        "ci": [
+          -0.01,
+          0.0664
+        ],
+        "p": 0.127,
+        "significant": false
+      },
+      "Quantum kernel SVM": {
+        "diff": 0.0549,
+        "ci": [
+          0.0176,
+          0.096
+        ],
+        "p": 0.0,
+        "significant": true
+      }
+    },
+    "rounds": 2000
   },
   "feature_importance": {
     "Logistic regression (standardised coefficient)": {

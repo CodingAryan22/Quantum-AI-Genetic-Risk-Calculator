@@ -1280,6 +1280,37 @@ def _metric_cell(value, best, fmt="{:.3f}"):
     return f'<b style="color:{PRIMARY}">{text}</b>' if is_best else text
 
 
+def significance_table(comp: dict):
+    """Paired-bootstrap comparison of every model against the best one."""
+    ref = comp["reference"]
+    rows = []
+    for name, pr in comp["pairs"].items():
+        lo, hi = pr["ci"]
+        p = "< 0.001" if pr["p"] < 0.001 else f"{pr['p']:.3f}"
+        verdict = (badge("Real difference", "good", dot=True) if pr["significant"]
+                   else badge("Could be chance", "neutral", dot=True))
+        rows.append(
+            f"<tr><td><span class='dt-title'>{_esc(ref)}</span> vs {_esc(name)}</td>"
+            f"<td><b>{pr['diff']:+.3f}</b></td>"
+            f"<td style='white-space:nowrap'>{lo:+.3f} to {hi:+.3f}</td>"
+            f"<td style='white-space:nowrap'>{p}</td><td>{verdict}</td></tr>"
+        )
+    with card("significance"):
+        card_header(
+            "Are the differences real?",
+            f"Paired bootstrap: the {comp['rounds']:,} resamples of the test patients are scored by every "
+            f"model, giving a 95% interval for each AUC gap. If the interval excludes 0, the gap is "
+            f"unlikely to be chance.",
+            right_html="",
+        )
+        st.markdown(
+            f"""<div class="dt-wrap"><table class="dt dt-compact" style="min-width:640px !important">
+            <thead><tr><th>Comparison</th><th>AUC gap</th><th>95% interval</th><th>p-value</th>
+            <th>Verdict</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>""",
+            unsafe_allow_html=True,
+        )
+
+
 def model_comparison(metrics: dict):
     t = tokens()
     data, models, q = metrics["dataset"], metrics["models"], metrics["quantum"]
@@ -1314,9 +1345,11 @@ def model_comparison(metrics: dict):
         cv = "–" if m["cv_auc"] is None else (
             _metric_cell(m["cv_auc"], best["cv_auc"])
             + f' <span class="card-s">± {m["cv_auc_std"]:.3f}</span>')
+        auc_ci = (f'<div class="card-s" style="white-space:nowrap">{m["auc_ci"][0]:.3f}–{m["auc_ci"][1]:.3f}</div>'
+                  if m.get("auc_ci") else "")
         rows.append(
             f"<tr><td><span class='dt-title'>{_esc(n)}</span></td>"
-            f"<td>{_metric_cell(m['auc'], best['auc'])}</td><td>{cv}</td>"
+            f"<td>{_metric_cell(m['auc'], best['auc'])}{auc_ci}</td><td>{cv}</td>"
             f"<td>{_metric_cell(m['brier'], best['brier'])}</td>"
             f"<td>{_metric_cell(m['sensitivity'], best['sensitivity'], '{:.0%}')}</td>"
             f"<td>{_metric_cell(m['specificity'], best['specificity'], '{:.0%}')}</td>"
@@ -1327,8 +1360,9 @@ def model_comparison(metrics: dict):
     with card("metrics"):
         card_header(
             "Test-set performance",
-            f"Best value in each column highlighted. Sensitivity, specificity and F1 treat a "
-            f"predicted risk ≥ {data['threshold'] * 100:.0f}% as \"at risk\". Lower Brier is better.",
+            f"Best value in each column highlighted; grey numbers under Test AUC are 95% bootstrap "
+            f"intervals. Sensitivity, specificity and F1 treat a predicted risk ≥ "
+            f"{data['threshold'] * 100:.0f}% as \"at risk\". Lower Brier is better.",
             right_html="",
         )
         st.markdown(
@@ -1338,6 +1372,9 @@ def model_comparison(metrics: dict):
             <tbody>{''.join(rows)}</tbody></table></div>""",
             unsafe_allow_html=True,
         )
+
+    if metrics.get("comparison"):
+        significance_table(metrics["comparison"])
 
     left, right = st.columns([1.3, 1], gap="medium")
     palette = [t["muted"], "#B692F6", "#9E77ED", PRIMARY_DARK]

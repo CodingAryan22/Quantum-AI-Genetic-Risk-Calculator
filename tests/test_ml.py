@@ -138,3 +138,28 @@ def test_family_history_adds_capped_points_to_rule_based_score():
         _patient(**{"Family History": {"First-degree": 9, "Second-degree": 9}}))
     assert one - base == quantum_engine.FIRST_DEGREE_POINTS
     assert many - base == 2 * quantum_engine.FIRST_DEGREE_POINTS + 2 * quantum_engine.SECOND_DEGREE_POINTS
+
+
+# ---------- bootstrap comparison ----------
+
+def test_bootstrap_flags_a_real_gap_but_not_noise():
+    from ml.train import bootstrap_auc
+
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 400)
+    good = y + rng.normal(0, 0.6, 400)         # strongly informative
+    twin = y + rng.normal(0, 0.6, 400)         # different model, same quality
+    weak = y + rng.normal(0, 3.0, 400)         # barely informative
+    out = bootstrap_auc(y, {"good": good, "twin": twin, "weak": weak}, n_boot=500)
+    assert out["reference"] in ("good", "twin")
+    other_twin = "twin" if out["reference"] == "good" else "good"
+    assert out["pairs"]["weak"]["significant"]
+    assert not out["pairs"][other_twin]["significant"]
+    lo, hi = out["auc_ci"]["weak"]
+    assert lo < hi
+
+
+def test_saved_metrics_include_bootstrap_intervals():
+    metrics = predictor.load_metrics()
+    assert all(len(m["auc_ci"]) == 2 for m in metrics["models"].values())
+    assert metrics["comparison"]["reference"] in metrics["models"]

@@ -77,6 +77,54 @@ def _evaluate(y_true, proba) -> dict:
     }
 
 
+BOOTSTRAP_ROUNDS = 2000
+
+
+def bootstrap_auc(y_true, probas: dict, n_boot: int = BOOTSTRAP_ROUNDS, seed: int = SEED) -> dict:
+    """
+    Paired bootstrap on the test set: resample the test patients with
+    replacement `n_boot` times and recompute every model's AUC on the same
+    resample.
+
+    Returns
+      auc_ci    : {model: [low, high]}  95% percentile interval of each AUC
+      reference : the model with the highest test AUC
+      pairs     : {model: {diff, ci, p, significant}} for reference minus model;
+                  "significant" means the 95% interval of the difference excludes 0
+      rounds    : number of resamples used
+    """
+    y = np.asarray(y_true)
+    names = list(probas)
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    aucs = {m: [] for m in names}
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, n)
+        if y[idx].min() == y[idx].max():  # a resample with one class has no AUC
+            continue
+        for m in names:
+            aucs[m].append(roc_auc_score(y[idx], np.asarray(probas[m])[idx]))
+    aucs = {m: np.array(v) for m, v in aucs.items()}
+    point = {m: roc_auc_score(y, probas[m]) for m in names}
+    ref = max(point, key=point.get)
+
+    def ci(values):
+        return [round(float(np.percentile(values, 2.5)), 4), round(float(np.percentile(values, 97.5)), 4)]
+
+    pairs = {}
+    for m in names:
+        if m == ref:
+            continue
+        diffs = aucs[ref] - aucs[m]
+        lo, hi = ci(diffs)
+        # Two-sided bootstrap p-value: how often the difference falls on the other side of 0.
+        p = 2 * min((diffs <= 0).mean(), (diffs >= 0).mean())
+        pairs[m] = {"diff": round(float(point[ref] - point[m]), 4), "ci": [lo, hi],
+                    "p": round(float(min(p, 1.0)), 4), "significant": bool(lo > 0 or hi < 0)}
+    return {"auc_ci": {m: ci(v) for m, v in aucs.items()}, "reference": ref,
+            "pairs": pairs, "rounds": int(len(aucs[ref]))}
+
+
 def _tune_quantum(X_train, y_train, scales, Cs, folds):
     """
     Picks (scale, C) by cross-validated AUC. Circuits are simulated once per
@@ -116,10 +164,12 @@ def train_models(df: pd.DataFrame, quick: bool = False):
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
 
     models, results = {}, {}
+    test_proba = {}  # model name -> predicted risk for each test patient (for the bootstrap)
 
     # Rule-based score: no training, evaluated for reference.
     t0 = time.perf_counter()
     proba = _rule_based_proba(X_test)
+    test_proba["Rule-based score"] = proba
     results["Rule-based score"] = {
         **_evaluate(y_test, proba), "cv_auc": None, "cv_auc_std": None, "fit_seconds": 0.0,
         "predict_ms": round((time.perf_counter() - t0) / len(X_test) * 1000, 3),
@@ -138,6 +188,7 @@ def train_models(df: pd.DataFrame, quick: bool = False):
         fit_s = time.perf_counter() - t0
         t0 = time.perf_counter()
         proba = model.predict_proba(Xte)[:, 1]
+        test_proba[name] = proba
         pred_ms = (time.perf_counter() - t0) / len(Xte) * 1000
         models[name] = model
         results[name] = {
@@ -164,6 +215,7 @@ def train_models(df: pd.DataFrame, quick: bool = False):
     tune_s = t1 - t0
     t0 = time.perf_counter()
     proba = qsvm.predict_proba(Xte)[:, 1]
+    test_proba["Quantum kernel SVM"] = proba
     pred_ms = (time.perf_counter() - t0) / len(Xte) * 1000
     models["Quantum kernel SVM"] = qsvm
     results["Quantum kernel SVM"] = {
@@ -172,6 +224,10 @@ def train_models(df: pd.DataFrame, quick: bool = False):
         "fit_seconds": round(fit_s, 3), "tuning_seconds": round(tune_s, 1),
         "predict_ms": round(pred_ms, 3), "train_size": len(Xq),
     }
+
+    comparison = bootstrap_auc(y_test, test_proba, n_boot=300 if quick else BOOTSTRAP_ROUNDS)
+    for name, ci in comparison["auc_ci"].items():
+        results[name]["auc_ci"] = ci
 
     lr = models["Logistic regression"][-1]
     metrics = {
@@ -187,6 +243,7 @@ def train_models(df: pd.DataFrame, quick: bool = False):
         "quantum": {**circuit_summary(len(FEATURES)),
                     "best_params": {"scale": best["scale"], "C": best["C"]}},
         "models": results,
+        "comparison": {k: v for k, v in comparison.items() if k != "auc_ci"},
         "feature_importance": {
             "Logistic regression (standardised coefficient)":
                 dict(zip(FEATURES, [round(float(c), 4) for c in lr.coef_[0]])),
@@ -217,6 +274,16 @@ def main():
         cv = f"{r['cv_auc']:.3f}" if r["cv_auc"] is not None else "-"
         print(f"{name:<22}{r['auc']:>7.3f}{cv:>9}{r['brier']:>8.3f}"
               f"{r['sensitivity']:>7.2f}{r['specificity']:>7.2f}{r['fit_seconds']:>8.2f}")
+    comp = metrics["comparison"]
+    print(f"\nPaired bootstrap ({comp['rounds']} resamples), best model: {comp['reference']}")
+    for name, r in metrics["models"].items():
+        lo, hi = r["auc_ci"]
+        line = f"  {name:<22} AUC {r['auc']:.3f}  95% CI {lo:.3f}-{hi:.3f}"
+        if name in comp["pairs"]:
+            pr = comp["pairs"][name]
+            line += (f"  | gap {pr['diff']:+.3f} (CI {pr['ci'][0]:+.3f} to {pr['ci'][1]:+.3f}),"
+                     f" p={pr['p']:.3f}{'  significant' if pr['significant'] else ''}")
+        print(line)
     print(f"\nSaved models and metrics to {MODELS_DIR}")
 
 

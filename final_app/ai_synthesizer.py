@@ -1,4 +1,5 @@
 import os
+import time
 import re
 
 import google.generativeai as genai
@@ -135,8 +136,16 @@ def build_prompt(patient_data: dict, risk_table, model_predictions: dict | None 
     """
 
 
-DEFAULT_MODELS = ["gemini-2.5-flash", "gemini-flash-lite-latest"]
+# Tried in order. Each model has its own free daily quota, so when one is used up
+# or busy the next usually still answers.
+DEFAULT_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemma-4-26b-a4b-it",
+]
 REQUEST_TIMEOUT_S = 25  # per model attempt
+TOTAL_BUDGET_S = 45     # for all attempts together
 
 
 def _models() -> list[str]:
@@ -163,6 +172,8 @@ def _describe_error(exc: Exception) -> str:
         return "the Gemini API key was rejected."
     if "DeadlineExceeded" in type(exc).__name__ or "timed out" in msg.lower() or "504" in msg:
         return "the AI service took too long to respond."
+    if "ServiceUnavailable" in type(exc).__name__ or "503" in msg or "high demand" in msg:
+        return "the AI service is busy right now."
     return f"the AI service returned an error ({type(exc).__name__})."
 
 
@@ -228,12 +239,18 @@ def generate_summary(patient_data: dict, risk_table, model_predictions: dict | N
 
     prompt = build_prompt(patient_data, risk_table, model_predictions)
     reason = None
+    deadline = time.monotonic() + TOTAL_BUDGET_S
     for name in _models():
+        remaining = deadline - time.monotonic()
+        if remaining < 5:  # not enough time left for another model to answer
+            reason = reason or "the AI service took too long to respond."
+            break
         try:
             # No hidden library retries, and a time limit per model, so a slow or
             # rate-limited model never leaves the page waiting for minutes.
             text = genai.GenerativeModel(name).generate_content(
-                prompt, request_options={"retry": None, "timeout": REQUEST_TIMEOUT_S},
+                prompt,
+                request_options={"retry": None, "timeout": min(REQUEST_TIMEOUT_S, remaining)},
             ).text
             if text and text.strip():
                 return {"text": text, "source": "ai", "model": name, "notice": None}

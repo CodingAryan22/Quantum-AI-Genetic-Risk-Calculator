@@ -31,9 +31,16 @@ PENDING_KEY = "_pending_patient"  # set by Generate; Results runs the analysis
 # ==========================================
 # SHARED HELPERS
 # ==========================================
+def _models_version() -> tuple:
+    """Changes whenever a file in models/ is rewritten (e.g. after `python -m ml.train`)."""
+    folder = predictor.MODELS_DIR
+    if not folder.exists():
+        return ()
+    return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in folder.iterdir()))
+
+
 @st.cache_resource(show_spinner="Loading ML models…")
-def get_models():
-    """Trained models, loaded once per server. None if `python -m ml.train` hasn't been run."""
+def _load_models(version: tuple):
     try:
         return predictor.load_models()
     except predictor.ModelsNotTrained:
@@ -41,8 +48,17 @@ def get_models():
 
 
 @st.cache_data
-def get_metrics():
+def _load_metrics(version: tuple):
     return predictor.load_metrics()
+
+
+def get_models():
+    """Trained models, cached until the files change. None if `python -m ml.train` hasn't been run."""
+    return _load_models(_models_version())
+
+
+def get_metrics():
+    return _load_metrics(_models_version())
 
 
 def reference_risk(patient_data: dict) -> float:
@@ -97,7 +113,7 @@ def _pdf_summary(summary: dict) -> str:
     """Summary text for the PDF, labelled when it is the standard (non-AI) version."""
     if summary["source"] == "ai":
         return summary["text"]
-    return "Standard summary (the AI service was unavailable).\n\n" + summary["text"]
+    return summary["text"] + "\n\n(Written from standard clinical guidance.)"
 
 
 def retry_ai_summary():
@@ -253,18 +269,23 @@ def results():
             from_ai = res.get("summary_source", "ai") == "ai"
             ui_modules.card_header(
                 "AI clinical summary" if from_ai else "Clinical summary",
-                "Plain-language interpretation, written from de-identified data." if from_ai
-                else "Standard summary from fixed guidance; the AI summary wasn't available.",
-                right_html="" if from_ai else ui_modules.badge("Standard", "warn", dot=True),
+                "Plain-language interpretation, written from de-identified data.",
+                right_html="",
             )
-            if not from_ai:
-                note_col, retry_col = st.columns([3, 1], vertical_alignment="center")
-                with note_col:
-                    ui_modules.hint("Why:", res.get("summary_notice") or "The AI service didn't respond.")
-                with retry_col:
-                    st.button("Retry AI summary", icon=":material/refresh:", width="stretch",
-                              key="retry-ai", on_click=retry_ai_summary)
             st.markdown(res["summary"])
+            if not from_ai:
+                # Kept small and quiet, but honest: this text came from standard guidance.
+                note_col, retry_col = st.columns([4, 1], vertical_alignment="center")
+                with note_col:
+                    st.markdown(
+                        '<div class="card-s">Written from standard clinical guidance because the '
+                        "AI service was busy. You can try the AI summary again.</div>",
+                        unsafe_allow_html=True,
+                    )
+                with retry_col:
+                    st.button("Retry AI summary", icon=":material/refresh:", type="tertiary",
+                              width="stretch", key="retry-ai", on_click=retry_ai_summary,
+                              help=res.get("summary_notice") or None)
 
     with models_tab:
         models = get_models()
@@ -518,7 +539,7 @@ def _patient_history_card(store, p: dict, i: int):
         latest = p["history"][0]
         if latest.get("summary"):
             label = ("Latest AI clinical summary" if latest.get("summary_source", "ai") == "ai"
-                     else "Latest clinical summary (standard, AI was unavailable)")
+                     else "Latest clinical summary")
             with st.expander(label):
                 st.markdown(latest["summary"])
         if latest["patient"].get("notes"):

@@ -78,9 +78,10 @@ def clear_form():
     # Advance the generation so all widget keys change on the next run.
     st.session_state[_RESET_KEY] = _generation() + 1
     st.session_state[_STEP_KEY] = 0
+    st.session_state.pop(_REPORT_KEY, None)
 
 
-STEPS = ["Demographics & vitals", "Markers & history", "Reports & notes"]
+STEPS = ["Demographics & vitals", "Markers & history", "Notes"]
 _STEP_KEY = "_form_step"
 
 GENDERS = ["Select", "Male", "Female", "Other"]
@@ -202,9 +203,80 @@ def _step_demographics():
         st.selectbox("Blood Group *", BLOOD_GROUPS, key=_wk("blood_group"))
 
 
+SCORED_GENES = ["BRCA1", "BRCA2", "APC", "TP53"]
+_REPORT_KEY = "_lab_report_findings"  # parsed findings, kept after the upload widget unmounts
+
+
+def _apply_report_findings():
+    """Ticks / adds every gene the report marks as positive."""
+    findings = st.session_state.get(_REPORT_KEY, {}).get("findings", [])
+    others = list(st.session_state.get(_wk("other_markers"), []) or [])
+    for f in findings:
+        if f["status"] != "positive":
+            continue
+        if f["gene"] in SCORED_GENES:
+            st.session_state[_wk(f["gene"].lower())] = True
+        elif f["gene"] not in others:
+            others.append(f["gene"])
+    st.session_state[_wk("other_markers")] = others
+    st.session_state["_toast"] = "Genes from the lab report were added to the form."
+
+
+def _lab_report_panel():
+    """Optional PDF upload that reads gene results and can fill the checkboxes."""
+    import lab_report
+
+    with st.expander("Fill from a lab report (PDF)", icon=":material/upload_file:",
+                     expanded=_REPORT_KEY in st.session_state):
+        upload = st.file_uploader(
+            "Upload a genetic test report", type=["pdf"], key=_wk("lab_report"),
+            help="The file is read in memory to find gene results and is not saved.",
+        )
+        if upload is not None:
+            cached = st.session_state.get(_REPORT_KEY)
+            if not cached or cached.get("file_id") != upload.file_id:
+                result = lab_report.read_report(upload.getvalue(), SCORED_GENES + SUGGESTED_MARKERS)
+                st.session_state[_REPORT_KEY] = {"file_id": upload.file_id, "name": upload.name, **result}
+        report = st.session_state.get(_REPORT_KEY)
+        if not report:
+            st.caption("Upload a PDF and the genes it reports are found automatically.")
+            return
+        if not report["has_text"]:
+            ui_modules.hint("No readable text in this PDF.",
+                            "It may be a scanned image. Please tick the genes below by hand.")
+            return
+        if not report["findings"]:
+            ui_modules.hint("No known genes found in this report.",
+                            "Check the report and tick any mutations below by hand.")
+            return
+        kinds = {"positive": ("Positive", "bad"), "uncertain": ("Uncertain (VUS)", "warn"),
+                 "negative": ("Negative", "good"), "mentioned": ("Mentioned", "neutral")}
+        rows = "".join(
+            f"<tr><td><span class='dt-title'>{f['gene']}</span></td>"
+            f"<td>{ui_modules.badge(*kinds[f['status']], dot=True)}</td>"
+            f"<td class='card-s'>{ui_modules._esc(f['evidence'])}</td></tr>"
+            for f in report["findings"]
+        )
+        st.markdown(
+            f"<div class='card-s' style='margin-bottom:0.4rem'>Found in <b>{ui_modules._esc(report['name'])}</b>:</div>"
+            f"<div class='dt-wrap'><table class='dt dt-compact'><thead><tr><th>Gene</th><th>Result</th>"
+            f"<th>From the report</th></tr></thead><tbody>{rows}</tbody></table></div>",
+            unsafe_allow_html=True,
+        )
+        positives = [f["gene"] for f in report["findings"] if f["status"] == "positive"]
+        st.button(
+            f"Apply to form ({', '.join(positives)})" if positives else "Nothing positive to apply",
+            icon=":material/check:", type="primary", disabled=not positives,
+            key="apply-report", on_click=_apply_report_findings,
+            help="Ticks positive scored genes and adds other positive genes to 'Other mutations'. "
+                 "Uncertain and negative results are not added.",
+        )
+
+
 def _step_markers():
     ui_modules.hint("Genetic & lifestyle factors",
                     "Tick any known mutations; leave them unticked if none were found.")
+    _lab_report_panel()
     col4, col5 = st.columns(2)
     with col4:
         st.selectbox("Ancestry/Ethnicity *", ANCESTRIES, key=_wk("ancestry"))
@@ -237,9 +309,7 @@ def _step_markers():
 
 
 def _step_notes():
-    ui_modules.hint("Lab reports & clinical notes", "Optional. Add anything else the clinician knows.")
-    st.file_uploader("Upload Lab Report (PDF/IMG)", type=["pdf", "png", "jpg", "jpeg"],
-                     key=_wk("lab_report"))
+    ui_modules.hint("Clinical notes", "Optional. Add anything else the clinician knows.")
     st.text_area(
         "Additional Clinical Details",
         placeholder="Enter any other relevant symptoms, family history, or physician notes...",
