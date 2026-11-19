@@ -131,3 +131,12 @@ def test_mongo_store_delete_all_only_touches_its_own_collection(mongo_store):
     other.insert_one({"keep": True})
     assert mongo_store.delete_all() == 1
     assert other.count_documents({}) == 1
+
+
+def test_all_patients_pdf_is_a_valid_pdf():
+    import pdf_builder
+
+    now = datetime.now(timezone.utc)
+    patients = storage.group_patients([_record("Jane Smith", 30, now), _record("Raj Mehta", 55, now)])
+    pdf = pdf_builder.generate_all_patients_pdf(patients)
+    assert pdf.startswith(b"%PDF") and len(pdf) > 2000

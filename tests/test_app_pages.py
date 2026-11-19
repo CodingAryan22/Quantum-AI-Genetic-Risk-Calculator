@@ -119,14 +119,33 @@ def test_start_over_clears_the_form_and_result():
     assert at.text_input(key="name_1").value == ""  # fresh, empty form (new generation)
 
 
-def test_delete_all_needs_the_word_delete():
+def _save_one():
     store, _ = views.get_store()
     tier, _ = ui_modules.risk_level(42.8)
     results = {"base": 43.0, "mean": 42.8, "ci": (35.7, 50.4), "models": {}, "summary": "S."}
     store.save(storage.build_record(PATIENT, results, tier))
+    return store
+
+
+def test_delete_all_asks_for_confirmation_first():
+    store = _save_one()
     at = _page("patient_records")
-    assert _button(at, "Delete all records").disabled
-    at.text_input(key="delete-all-confirm").set_value("DELETE").run()
-    _button(at, "Delete all records").click().run()
+    _button(at, "Delete all").click().run()
+    assert len(store.all_records()) == 1  # nothing deleted yet, only the bar appears
+    assert any("Delete all records?" in m.value for m in at.markdown)
+
+    _button(at, "Cancel").click().run()
+    assert not any(b.label == "Yes, delete all" for b in at.button)
+    assert len(store.all_records()) == 1
+
+    _button(at, "Delete all").click().run()
+    _button(at, "Yes, delete all").click().run()
     assert not at.exception, at.exception
     assert store.all_records() == []
+
+
+def test_export_all_offers_csv_and_pdf():
+    _save_one()
+    at = _page("patient_records")
+    labels = [d.proto.label for d in at.get("download_button")]
+    assert "CSV spreadsheet" in labels and "PDF report" in labels

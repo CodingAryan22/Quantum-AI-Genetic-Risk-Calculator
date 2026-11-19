@@ -105,10 +105,6 @@ def start_over():
     st.session_state["_toast"] = "Form and current result cleared."
 
 
-def _gap(rem: float = 0.5):
-    st.markdown(f"<div style='height:{rem}rem'></div>", unsafe_allow_html=True)
-
-
 # ==========================================
 # PAGES
 # ==========================================
@@ -121,7 +117,6 @@ def home():
     with right:
         if st.button("See the models", icon=":material/insights:", width="stretch"):
             st.switch_page(pages()["models"])
-    _gap(1.5)
     ui_modules.evidence_section()
 
 
@@ -189,14 +184,12 @@ def results():
             width="stretch",
             on_click="ignore",
         )
-    _gap(0.25)
 
     overview, models_tab, details = st.tabs(["Overview", "Models", "Details"])
 
     with overview:
         ui_modules.risk_banner(res["mean"])
         ui_modules.headline_card(res["mean"], *res["ci"], res.get("models"))
-        _gap()
         with ui_modules.card("summary"):
             ui_modules.card_header(
                 "AI clinical summary",
@@ -234,7 +227,6 @@ def results():
 
     with details:
         ui_modules.kpi_tiles(res["base_str"], res["mean"], res["ci"], res["base"])
-        _gap(1)
         with ui_modules.card("dist"):
             ui_modules.card_header(
                 "Simulated risk distribution",
@@ -245,7 +237,6 @@ def results():
                 ui_modules.distribution_area(res["plot"], res["mean"], *res["ci"]),
                 width="stretch", config=ui_modules.chart_config(), theme=None,
             )
-        _gap()
         with ui_modules.card("factors"):
             ui_modules.card_header(
                 "Risk factors",
@@ -290,26 +281,61 @@ def _patient_actions_menu(store, p: dict, i: int):
             st.rerun()
 
 
-def _delete_all_menu(store, patients: list):
-    """Top-right "⋮" menu on Patient records: delete every saved record after typing DELETE."""
-    total = sum(p["assessments"] for p in patients)
-    with st.container(key="patient-actions-all"), st.popover(
-        "", icon=":material/more_vert:", key="records-menu", disabled=not patients,
+CONFIRM_DELETE_ALL = "_confirm_delete_all"
+
+
+def _export_all_menu(patients: list):
+    """Top-right "Export all" menu: every saved assessment as CSV or as a PDF report."""
+    stamp = f"{datetime.now():%Y%m%d}"
+    with st.container(key="export-all"), st.popover(
+        "Export all", icon=":material/download:", width="stretch", key="export-all-menu",
+        disabled=not patients,
     ):
-        st.markdown(f"**Delete all records**  \nPermanently deletes all {total} saved assessments "
-                    f"for {len(patients)} patients from {store.name}. Export them first if you "
-                    "might need them. This cannot be undone.")
-        typed = st.text_input("Type DELETE to confirm", key="delete-all-confirm",
-                              placeholder="DELETE")
-        st.button("Delete all records", icon=":material/delete_forever:", width="stretch",
-                  disabled=typed.strip() != "DELETE", key="delete-all",
-                  on_click=_delete_all, args=(store,))
+        st.download_button(
+            "CSV spreadsheet", icon=":material/table:", type="tertiary",
+            data=storage.records_to_csv([r for p in patients for r in p["history"]]),
+            file_name=f"riskpredict_all_patients_{stamp}.csv", mime="text/csv",
+            width="stretch", on_click="ignore", key="export-all-csv",
+        )
+        st.download_button(
+            "PDF report", icon=":material/picture_as_pdf:", type="tertiary",
+            data=pdf_builder.generate_all_patients_pdf(patients) if patients else b"",
+            file_name=f"riskpredict_all_patients_{stamp}.pdf", mime="application/pdf",
+            width="stretch", on_click="ignore", key="export-all-pdf",
+        )
+
+
+def _ask_delete_all():
+    st.session_state[CONFIRM_DELETE_ALL] = True
+
+
+def _cancel_delete_all():
+    st.session_state.pop(CONFIRM_DELETE_ALL, None)
 
 
 def _delete_all(store):
     removed = store.delete_all()
-    st.session_state["delete-all-confirm"] = ""
+    st.session_state.pop(CONFIRM_DELETE_ALL, None)
     st.session_state["_toast"] = f"Deleted all {removed} saved assessments."
+
+
+def _delete_all_confirm_bar(store, patients: list):
+    """Red bar under the header asking to confirm deleting every record."""
+    total = sum(p["assessments"] for p in patients)
+    with st.container(key="confirm-bar"):
+        text_col, cancel_col, ok_col = st.columns([4, 1, 1.4], vertical_alignment="center")
+        with text_col:
+            st.markdown(
+                f'<div class="cb-text"><b>Delete all records?</b> This permanently removes all '
+                f'{total} saved assessments for {len(patients)} patients from {store.name}. '
+                'Export them first if you might need them. This cannot be undone.</div>',
+                unsafe_allow_html=True,
+            )
+        with cancel_col:
+            st.button("Cancel", width="stretch", key="delete-all-cancel", on_click=_cancel_delete_all)
+        with ok_col:
+            st.button("Yes, delete all", icon=":material/delete_forever:", type="primary",
+                      width="stretch", key="delete-all-yes", on_click=_delete_all, args=(store,))
 
 
 def patient_records():
@@ -321,8 +347,8 @@ def patient_records():
     except Exception as exc:
         patients, read_error = [], exc
 
-    # Header: title on the left; "Export all" and a "⋮" menu (delete all) on the top right.
-    head_col, export_col, menu_col = st.columns([2.4, 1, 0.22], vertical_alignment="center")
+    # Header: title on the left; "Export all" (CSV or PDF) and "Delete all" on the top right.
+    head_col, export_col, delete_col = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
     with head_col:
         ui_modules.page_header(
             "Patient records",
@@ -330,16 +356,12 @@ def patient_records():
             ui_modules.badge(where, "good" if store.name == "MongoDB" else "warn", dot=True),
         )
     with export_col:
-        st.download_button(
-            "Export all (CSV)", icon=":material/download:",
-            data=storage.records_to_csv([r for p in patients for r in p["history"]]),
-            file_name=f"riskpredict_all_patients_{datetime.now():%Y%m%d}.csv",
-            mime="text/csv", width="stretch", on_click="ignore", key="export-all",
-            disabled=not patients,
-            help=f"Every saved assessment for all {len(patients)} patients, one row per assessment.",
-        )
-    with menu_col:
-        _delete_all_menu(store, patients)
+        _export_all_menu(patients)
+    with delete_col:
+        st.button("Delete all", icon=":material/delete:", width="stretch", key="delete-all",
+                  disabled=not patients, on_click=_ask_delete_all)
+    if st.session_state.get(CONFIRM_DELETE_ALL) and patients:
+        _delete_all_confirm_bar(store, patients)
     if error:
         ui_modules.hint(
             "MongoDB not reachable, using a local file instead.",
@@ -357,7 +379,6 @@ def patient_records():
         return
 
     ui_modules.records_stats(patients)
-    _gap(1)
 
     search_col, tier_col = st.columns([1.6, 1.4], vertical_alignment="bottom")
     with search_col:
@@ -391,14 +412,12 @@ def patient_records():
 
     # Every matching patient's full history, one card each. The search box and
     # tier filter above narrow this list along with the table.
-    _gap()
     ui_modules.section_title(
         f"Patient histories ({len(shown)})",
         "Search above by name, mutation or disease to find a patient.",
     )
     for i, p in enumerate(shown):
         _patient_history_card(store, p, i)
-        _gap(0.5)
 
     ui_modules.footer_note()
 
@@ -416,7 +435,7 @@ def _patient_history_card(store, p: dict, i: int):
             )
         with badge_col:
             st.markdown(
-                '<div style="text-align:right;margin-top:-0.1rem">'
+                '<div style="text-align:right">'
                 + ui_modules.badge(p["latest_tier"], ui_modules.risk_level(p["latest_mean"])[1], dot=True)
                 + "</div>",
                 unsafe_allow_html=True,

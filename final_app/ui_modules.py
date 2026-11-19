@@ -279,8 +279,36 @@ def apply_theme(is_dark_mode: bool = False):
     .ev-caution a, .ev-sources a {{ color: {t['primary_text']}; }}
     .ev-sources {{ font-size: 0.78rem; color: {t['muted']}; margin-top: 0.8rem; line-height: 1.7; }}
 
+    /* ---------- Spacing scale ----------
+       24px between page sections (and between side-by-side cards),
+       16px between elements inside a card. No manual spacers anywhere. */
+    [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"],
+    [data-testid="stTabs"] [role="tabpanel"] > [data-testid="stVerticalBlock"] {{
+        gap: 1.5rem !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [class*="st-key-card"]),
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .kpi) {{
+        gap: 1.5rem !important;
+    }}
+    /* Cards stacked inside a column (e.g. About: Privacy above Limitations). */
+    [data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has([class*="st-key-card"]) {{
+        gap: 1.5rem !important;
+    }}
+    div[class*="st-key-card"] {{ gap: 1rem !important; }}
+    [data-testid="stTabs"] [data-baseweb="tab-panel"] {{ padding-top: 1.25rem !important; }}
+
+    /* ---------- Dark-mode switch: pinned top right ---------- */
+    .st-key-theme-toggle {{
+        position: fixed !important; top: 0.85rem; right: 1.5rem; z-index: 999991;
+        width: auto !important; padding: 0.3rem 0.75rem 0.3rem 0.6rem;
+        background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 999px;
+        box-shadow: {t['shadow']};
+    }}
+    .st-key-theme-toggle label {{ margin: 0 !important; }}
+    .st-key-theme-toggle p {{ font-size: 0.85rem !important; font-weight: 500 !important; color: {t['text']} !important; }}
+
     /* ---------- Page header ---------- */
-    .page-head {{ display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.6rem; flex-wrap: wrap; }}
+    .page-head {{ display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 0; flex-wrap: wrap; }}
     .page-title {{ font-size: 1.875rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; line-height: 1.25; margin: 0; }}
     .page-sub {{ color: {t['muted']}; font-size: 1rem; margin-top: 0.25rem; }}
 
@@ -488,6 +516,19 @@ def apply_theme(is_dark_mode: bool = False):
         background: {t['surface']} !important; border: 1px solid {t['input_border']} !important;
     }}
     [data-testid="stPopoverBody"] p {{ color: {t['text']} !important; }}
+    /* Patient records header: danger-styled "Delete all" and its confirmation bar. */
+    .st-key-delete-all button {{ border-color: {t['bad'][2]} !important; }}
+    .st-key-delete-all button p, .st-key-delete-all button span {{ color: {t['bad'][1]} !important; }}
+    .st-key-delete-all button:hover {{ background: {t['bad'][0]} !important; }}
+    .st-key-delete-all button:disabled p, .st-key-delete-all button:disabled span {{ color: {t['muted']} !important; }}
+    .st-key-confirm-bar {{
+        background: {t['bad'][0]}; border: 1px solid {t['bad'][2]}; border-radius: 12px;
+        padding: 0.85rem 1rem 0.85rem 1.25rem;
+    }}
+    .cb-text {{ color: {t['text']}; font-size: 0.9rem; line-height: 1.5; }}
+    .cb-text b {{ color: {t['bad'][1]}; }}
+    .st-key-confirm-bar .stButton > button[kind="primary"] {{ background: #D92D20 !important; border-color: #D92D20 !important; }}
+    .st-key-export-all [data-testid="stPopoverButton"] {{ white-space: nowrap !important; }}
     /* "Start over" (New assessment): compact, one line, right-aligned, no dropdown arrow. */
     .st-key-start-over {{ align-items: flex-end !important; }}
     .st-key-start-over [data-testid="stPopoverButton"] {{ white-space: nowrap !important; min-height: 38px !important; }}
@@ -554,14 +595,13 @@ def apply_theme(is_dark_mode: bool = False):
     .stTabs [data-baseweb="tab-border"] {{ display: none; }}
 
     /* ---------- Toggle ---------- */
-    [data-testid="stSidebar"] [data-testid="stCheckbox"] {{ padding: 0.3rem 0.75rem; }}
 
     /* ---------- AI summary text ---------- */
     .st-key-card-summary p, .st-key-card-summary li {{ font-size: 0.95rem; line-height: 1.65; color: {t['text']}; }}
 
     .footer-note {{
         text-align: center; color: {t['muted']}; font-size: 0.8rem;
-        margin-top: 2rem; padding-top: 1rem; border-top: 1px solid {t['border']};
+        margin-top: 0.5rem; padding-top: 1rem; border-top: 1px solid {t['border']};
     }}
     .stSpinner > div {{ border-top-color: {PRIMARY} !important; }}
 
@@ -599,7 +639,7 @@ def apply_theme(is_dark_mode: bool = False):
     .hl {{
         display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap;
         background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px;
-        box-shadow: {t['shadow']}; padding: 1.5rem 1.75rem; margin-top: 1rem;
+        box-shadow: {t['shadow']}; padding: 1.5rem 1.75rem; margin-top: 0;
     }}
     .hl-left {{ min-width: 170px; }}
     .hl-num {{ font-size: 3.4rem; font-weight: 700; color: {t['heading']}; letter-spacing: -0.03em; line-height: 1.05; margin: 0.25rem 0 0.5rem 0; }}
@@ -670,10 +710,6 @@ def sidebar_brand():
     )
 
 
-def sidebar_label(text: str):
-    st.markdown(f'<div class="sb-label">{_esc(text)}</div>', unsafe_allow_html=True)
-
-
 def sidebar_footer():
     st.markdown(
         '<div class="sb-foot">Educational estimate only — not a substitute for genetic '
@@ -686,7 +722,7 @@ def section_title(title: str, subtitle: str = ""):
     """A heading between cards (smaller than the page title)."""
     sub = f'<div class="card-s">{_esc(subtitle)}</div>' if subtitle else ""
     st.markdown(
-        f'<div style="margin:0.25rem 0 0.75rem 0"><div class="card-t" style="font-size:1.15rem">'
+        f'<div><div class="card-t" style="font-size:1.15rem">'
         f'{_esc(title)}</div>{sub}</div>',
         unsafe_allow_html=True,
     )
@@ -1303,7 +1339,6 @@ def model_comparison(metrics: dict):
             unsafe_allow_html=True,
         )
 
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     left, right = st.columns([1.3, 1], gap="medium")
     palette = [t["muted"], "#B692F6", "#9E77ED", PRIMARY_DARK]
     with left:
@@ -1349,7 +1384,6 @@ def model_comparison(metrics: dict):
                 unsafe_allow_html=True,
             )
 
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     with card("importance"):
         card_header("What the random forest relies on",
                     "Feature importance: each feature's share of the forest's total impurity reduction.",
@@ -1465,7 +1499,6 @@ def about_page(metrics: dict | None):
         card_header("How an assessment works", "", right_html="")
         st.markdown(f'<div class="ab-steps">{step_html}</div>', unsafe_allow_html=True)
 
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     left, right = st.columns(2, gap="medium")
     with left:
         with card("data"):
@@ -1498,7 +1531,6 @@ def about_page(metrics: dict | None):
                 'Records can be deleted from the <b>Patient records</b> page.</p></div>',
                 unsafe_allow_html=True,
             )
-        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
         with card("limits"):
             card_header("Limitations", "", right_html="")
             st.markdown(

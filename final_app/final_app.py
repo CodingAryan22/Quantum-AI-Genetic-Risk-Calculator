@@ -28,7 +28,7 @@ app_pages = views.pages()
 page = st.navigation(list(app_pages.values()), position="hidden")
 
 # ==========================================
-# SIDEBAR: brand, navigation, appearance
+# SIDEBAR: brand and navigation
 # ==========================================
 with st.sidebar:
     ui_modules.sidebar_brand()
@@ -46,9 +46,11 @@ with st.sidebar:
             else:
                 st.page_link(p, label=label)
 
-    ui_modules.sidebar_label("Appearance")
-    dark_mode = st.toggle("Dark mode", value=True, key="dark_mode")
     ui_modules.sidebar_footer()
+
+# Dark-mode switch, pinned to the top-right corner of every page by the theme CSS.
+with st.container(key="theme-toggle"):
+    dark_mode = st.toggle("Dark mode", value=True, key="dark_mode")
 
 ui_modules.apply_theme(dark_mode)
 

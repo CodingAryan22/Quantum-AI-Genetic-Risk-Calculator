@@ -264,7 +264,6 @@ def render_collection_form() -> tuple[dict, bool]:
     problems = step_problems(step, patient)
     last = step == len(STEPS) - 1
 
-    st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
     back_col, msg_col, next_col = st.columns([1, 2.6, 1.4], vertical_alignment="center")
     with back_col:
         if step > 0:
