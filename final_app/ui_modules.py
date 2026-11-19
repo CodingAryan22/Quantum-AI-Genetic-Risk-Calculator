@@ -135,11 +135,6 @@ def apply_theme(is_dark_mode: bool = False):
         font-weight: 600 !important;
     }}
     [data-testid="stSidebar"] .stButton > button:hover {{ background: {t['subtle']} !important; }}
-    .st-key-btn-clear-all button {{
-        color: {bad[1]} !important; border-color: {bad[2]} !important; background: {t['surface']} !important;
-    }}
-    .st-key-btn-clear-all button:hover {{ background: {bad[0]} !important; }}
-    .st-key-btn-clear-all button p, .st-key-btn-clear-all button span {{ color: {bad[1]} !important; }}
     .sb-promo {{
         background: {t['primary_soft']}; border-radius: 10px; padding: 1rem;
         margin-top: 1.4rem; font-size: 0.875rem; color: {t['text']};
@@ -493,6 +488,10 @@ def apply_theme(is_dark_mode: bool = False):
         background: {t['surface']} !important; border: 1px solid {t['input_border']} !important;
     }}
     [data-testid="stPopoverBody"] p {{ color: {t['text']} !important; }}
+    /* "Start over" (New assessment): compact, one line, right-aligned, no dropdown arrow. */
+    .st-key-start-over {{ align-items: flex-end !important; }}
+    .st-key-start-over [data-testid="stPopoverButton"] {{ white-space: nowrap !important; min-height: 38px !important; }}
+    .st-key-start-over [data-testid="stPopoverButton"] > div > div:last-child:not(:first-child) {{ display: none !important; }}
     /* "⋮" actions menu (Patient records): small square button, menu-style items. */
     [class*="st-key-patient-actions-"] [data-testid="stPopoverButton"] {{
         min-height: 38px !important; width: 38px !important; padding: 0 !important;

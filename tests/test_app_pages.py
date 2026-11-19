@@ -108,3 +108,25 @@ def test_patient_records_page_lists_saved_patients():
     at = _page("patient_records")
     html = " ".join(m.value for m in at.markdown)
     assert "Test Patient" in html and "Breast cancer" in html
+
+
+def test_start_over_clears_the_form_and_result():
+    at = _page("new_assessment", {views.RESULTS_KEY: {"mean": 10}})
+    at.text_input(key="name_0").set_value("Someone").run()
+    _button(at, "Yes, start over").click().run()
+    assert not at.exception, at.exception
+    assert views.RESULTS_KEY not in at.session_state
+    assert at.text_input(key="name_1").value == ""  # fresh, empty form (new generation)
+
+
+def test_delete_all_needs_the_word_delete():
+    store, _ = views.get_store()
+    tier, _ = ui_modules.risk_level(42.8)
+    results = {"base": 43.0, "mean": 42.8, "ci": (35.7, 50.4), "models": {}, "summary": "S."}
+    store.save(storage.build_record(PATIENT, results, tier))
+    at = _page("patient_records")
+    assert _button(at, "Delete all records").disabled
+    at.text_input(key="delete-all-confirm").set_value("DELETE").run()
+    _button(at, "Delete all records").click().run()
+    assert not at.exception, at.exception
+    assert store.all_records() == []

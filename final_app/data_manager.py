@@ -60,15 +60,6 @@ def _wk(field: str) -> str:
     return f"{field}_{_generation()}"
 
 
-def clear_session_state():
-    """
-    Loops through Streamlit's session state and deletes every key.
-    This forces all input widgets to reset to their default blank values.
-    """
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-
-
 def clear_form():
     """
     Resets the entire patient entry form (name, age, weight, selects,

@@ -98,6 +98,13 @@ def save_assessment(patient_data: dict, results: dict):
         st.session_state["_save_error"] = f"Could not save this assessment: {exc}"
 
 
+def start_over():
+    """Clears the form (back to step 1) and the current result. Database untouched."""
+    data_manager.clear_form()
+    st.session_state.pop(RESULTS_KEY, None)
+    st.session_state["_toast"] = "Form and current result cleared."
+
+
 def _gap(rem: float = 0.5):
     st.markdown(f"<div style='height:{rem}rem'></div>", unsafe_allow_html=True)
 
@@ -119,10 +126,20 @@ def home():
 
 
 def new_assessment():
-    ui_modules.page_header(
-        "New assessment",
-        "Three short steps. Next unlocks once the current step is complete.",
-    )
+    head_col, reset_col = st.columns([4, 1], vertical_alignment="center")
+    with head_col:
+        ui_modules.page_header(
+            "New assessment",
+            "Three short steps. Next unlocks once the current step is complete.",
+        )
+    with reset_col:
+        with st.container(key="start-over"), st.popover(
+            "Start over", icon=":material/restart_alt:", key="start-over-menu",
+        ):
+            st.markdown("Clear every field and the current result, and go back to step 1? "
+                        "Saved patient records are not affected.")
+            st.button("Yes, start over", type="primary", width="stretch",
+                      on_click=start_over, key="start-over-confirm")
     with ui_modules.card("form"):
         patient_data, generate = data_manager.render_collection_form()
 
@@ -273,6 +290,28 @@ def _patient_actions_menu(store, p: dict, i: int):
             st.rerun()
 
 
+def _delete_all_menu(store, patients: list):
+    """Top-right "⋮" menu on Patient records: delete every saved record after typing DELETE."""
+    total = sum(p["assessments"] for p in patients)
+    with st.container(key="patient-actions-all"), st.popover(
+        "", icon=":material/more_vert:", key="records-menu", disabled=not patients,
+    ):
+        st.markdown(f"**Delete all records**  \nPermanently deletes all {total} saved assessments "
+                    f"for {len(patients)} patients from {store.name}. Export them first if you "
+                    "might need them. This cannot be undone.")
+        typed = st.text_input("Type DELETE to confirm", key="delete-all-confirm",
+                              placeholder="DELETE")
+        st.button("Delete all records", icon=":material/delete_forever:", width="stretch",
+                  disabled=typed.strip() != "DELETE", key="delete-all",
+                  on_click=_delete_all, args=(store,))
+
+
+def _delete_all(store):
+    removed = store.delete_all()
+    st.session_state["delete-all-confirm"] = ""
+    st.session_state["_toast"] = f"Deleted all {removed} saved assessments."
+
+
 def patient_records():
     store, error = get_store()
     where = (f"MongoDB · {store.location}" if store.name == "MongoDB" else "Local file")
@@ -282,8 +321,8 @@ def patient_records():
     except Exception as exc:
         patients, read_error = [], exc
 
-    # Header: title on the left, "Export all" on the top right.
-    head_col, export_col = st.columns([2.4, 1], vertical_alignment="center")
+    # Header: title on the left; "Export all" and a "⋮" menu (delete all) on the top right.
+    head_col, export_col, menu_col = st.columns([2.4, 1, 0.22], vertical_alignment="center")
     with head_col:
         ui_modules.page_header(
             "Patient records",
@@ -299,6 +338,8 @@ def patient_records():
             disabled=not patients,
             help=f"Every saved assessment for all {len(patients)} patients, one row per assessment.",
         )
+    with menu_col:
+        _delete_all_menu(store, patients)
     if error:
         ui_modules.hint(
             "MongoDB not reachable, using a local file instead.",

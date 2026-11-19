@@ -28,7 +28,7 @@ app_pages = views.pages()
 page = st.navigation(list(app_pages.values()), position="hidden")
 
 # ==========================================
-# SIDEBAR: brand, navigation, workspace actions, appearance
+# SIDEBAR: brand, navigation, appearance
 # ==========================================
 with st.sidebar:
     ui_modules.sidebar_brand()
@@ -46,26 +46,14 @@ with st.sidebar:
             else:
                 st.page_link(p, label=label)
 
-    ui_modules.sidebar_label("Workspace")
-    if st.button("Clear form", icon=":material/restart_alt:", key="btn-clear-form", width="stretch"):
-        data_manager.clear_form()
-        st.session_state.pop(views.RESULTS_KEY, None)
-        st.session_state["form_cleared"] = True
-        st.rerun()
-    if st.button("Clear all records", icon=":material/delete:", key="btn-clear-all", width="stretch"):
-        data_manager.clear_session_state()
-        st.session_state["records_cleared"] = True
-        st.rerun()
-
     ui_modules.sidebar_label("Appearance")
     dark_mode = st.toggle("Dark mode", value=True, key="dark_mode")
     ui_modules.sidebar_footer()
 
 ui_modules.apply_theme(dark_mode)
 
-if st.session_state.pop("form_cleared", False):
-    st.toast("Patient entry form cleared.", icon="✨")
-if st.session_state.pop("records_cleared", False):
-    st.toast("All records cleared.", icon="✨")
+# One-off notices set by actions on the previous run (e.g. "Start over").
+if notice := st.session_state.pop("_toast", None):
+    st.toast(notice, icon="✨")
 
 page.run()

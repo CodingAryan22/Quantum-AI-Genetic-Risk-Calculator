@@ -116,3 +116,18 @@ def test_patient_history_pdf_is_a_valid_pdf():
                                       _record("Jane Smith", 55, now)])[0]
     pdf = pdf_builder.generate_patient_history_pdf(patient)
     assert pdf.startswith(b"%PDF") and len(pdf) > 1500
+
+
+def test_local_store_delete_all(tmp_path):
+    store = storage.LocalStore(tmp_path / "records.json")
+    store.save(_record("Jane Smith"))
+    store.save(_record("Raj Mehta"))
+    assert store.delete_all() == 2 and store.all_records() == []
+
+
+def test_mongo_store_delete_all_only_touches_its_own_collection(mongo_store):
+    mongo_store.save(_record("Jane Smith"))
+    other = mongo_store.col.database["other_collection"]
+    other.insert_one({"keep": True})
+    assert mongo_store.delete_all() == 1
+    assert other.count_documents({}) == 1

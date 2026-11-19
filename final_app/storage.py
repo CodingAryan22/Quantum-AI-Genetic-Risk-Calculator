@@ -156,6 +156,10 @@ class MongoStore:
     def delete_patient(self, key: str) -> int:
         return self.col.delete_many({"patient_key": key}).deleted_count
 
+    def delete_all(self) -> int:
+        """Deletes every saved assessment in this app's collection (nothing else)."""
+        return self.col.delete_many({}).deleted_count
+
 
 class LocalStore:
     name = "Local file"
@@ -192,6 +196,11 @@ class LocalStore:
         keep = [r for r in records if r["patient_key"] != key]
         self._write(keep)
         return len(records) - len(keep)
+
+    def delete_all(self) -> int:
+        count = len(self._read())
+        self._write([])
+        return count
 
 
 def connect():
