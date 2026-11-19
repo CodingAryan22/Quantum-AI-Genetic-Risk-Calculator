@@ -402,8 +402,8 @@ def apply_theme(is_dark_mode: bool = False):
     div[data-baseweb="select"] * {{ color: {t['heading']} !important; }}
     div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within,
     div[data-baseweb="select"] > div:focus-within {{
-        border-color: #D6BBFB !important;
-        box-shadow: 0 0 0 4px rgba(158,119,237,0.24) !important;
+        border-color: {t['line']} !important;
+        box-shadow: 0 0 0 3px rgba(158,119,237,0.35) !important;
     }}
     input::placeholder, textarea::placeholder {{ color: {t['muted']} !important; opacity: 0.8 !important; }}
     [data-testid="stNumberInputContainer"], [data-testid="stTextInputRootElement"] {{
@@ -412,6 +412,17 @@ def apply_theme(is_dark_mode: bool = False):
     [data-testid="stNumberInput"] div[data-baseweb="input"] {{ border: none !important; box-shadow: none !important; }}
     [data-testid="stNumberInput"] button * {{ color: {t['muted']} !important; fill: {t['muted']} !important; }}
     [data-testid="stNumberInput"] button {{ background: transparent !important; border: none !important; color: {t['muted']} !important; }}
+    /* Text cursor: Streamlit's light base theme makes it dark navy, invisible in dark mode. */
+    input, textarea {{ caret-color: {t['line']} !important; }}
+    /* Clear "you are here" state on the field being edited or the dropdown that is open. */
+    [data-testid="stTextInputRootElement"]:focus-within,
+    [data-testid="stNumberInputContainer"]:focus-within,
+    [data-testid="stTextArea"] div[data-baseweb="textarea"]:focus-within,
+    div[data-baseweb="select"] > div:focus-within,
+    div[data-baseweb="select"] > div[aria-expanded="true"] {{
+        border-color: {t['line']} !important;
+        box-shadow: 0 0 0 3px rgba(158,119,237,0.35) !important;
+    }}
     /* Dropdown list (rendered in a floating layer outside the form) */
     [data-baseweb="popover"] > div, [data-baseweb="popover"] ul,
     [data-baseweb="menu"], [role="listbox"] {{
@@ -426,8 +437,13 @@ def apply_theme(is_dark_mode: bool = False):
     }}
     [data-baseweb="popover"] li:hover, [role="listbox"] [role="option"]:hover,
     [role="listbox"] [role="option"][aria-selected="true"],
-    [data-baseweb="option"]:hover, [data-baseweb="option"][aria-selected="true"] {{
-        background: {t['subtle']} !important;
+    [data-baseweb="option"]:hover, [data-baseweb="option"][aria-selected="true"],
+    [role="option"]:hover, [role="option"][aria-selected="true"] {{
+        background: {t['primary_soft']} !important;
+    }}
+    [role="option"][aria-selected="true"], [role="option"][aria-selected="true"] *,
+    [data-baseweb="option"][aria-selected="true"] * {{
+        color: {t['primary_text']} !important; font-weight: 600;
     }}
     /* Help tooltips (the "?" next to a label). Streamlit paints them with the
        light base theme, so set both background and text from our tokens. */
