@@ -240,12 +240,14 @@ def results():
     ui_modules.footer_note()
 
 
-def _patient_actions_menu(store, p: dict, key: str):
+def _patient_actions_menu(store, p: dict, i: int):
     """The "⋮" menu on a patient's history: downloads, then delete with confirmation."""
     fname = storage.safe_filename(p["name"])
+    key = p["key"]
     # The keyed container lets the theme CSS shape the button into a small "⋮" square.
-    with st.container(key="patient-actions"), st.popover(
-        "", icon=":material/more_vert:", key="patient-actions-menu",
+    # Keys use the card index, since patient names can contain spaces.
+    with st.container(key=f"patient-actions-{i}"), st.popover(
+        "", icon=":material/more_vert:", key=f"patient-actions-menu-{i}",
     ):
         st.download_button(
             "Download PDF report", icon=":material/picture_as_pdf:", type="tertiary",
@@ -345,34 +347,44 @@ def patient_records():
 
     if not shown:
         return
+
+    # Every matching patient's full history, one card each. The search box and
+    # tier filter above narrow this list along with the table.
     _gap()
-    with ui_modules.card("history"):
-        names = {p["key"]: p for p in shown}
-        key = st.selectbox(
-            "Patient history", list(names), format_func=lambda k: names[k]["name"],
-            key="records-patient",
-        )
-        p = names[key]
-        # Patient header: name on the left; tier badge and a "⋮" actions menu on the right.
-        title_col, badge_col, menu_col = st.columns([6, 1.4, 0.5], vertical_alignment="center")
+    ui_modules.section_title(
+        f"Patient histories ({len(shown)})",
+        "Search above by name, mutation or disease to find a patient.",
+    )
+    for i, p in enumerate(shown):
+        _patient_history_card(store, p, i)
+        _gap(0.5)
+
+    ui_modules.footer_note()
+
+
+def _patient_history_card(store, p: dict, i: int):
+    """One patient's history: header with tier and ⋮ menu, chart, table, summary."""
+    with ui_modules.card(f"history-{i}"):
+        title_col, badge_col, menu_col = st.columns([6, 1.4, 0.45], vertical_alignment="top")
         with title_col:
             ui_modules.card_header(
                 f"{p['name']} · {p['assessments']} assessment{'s' if p['assessments'] != 1 else ''}",
-                "Risk over time. The shaded band is each assessment's 90% range.",
+                "Risk over time. The shaded band is each assessment's 90% range."
+                if p["assessments"] > 1 else "Every saved assessment, newest first.",
                 right_html="",
             )
         with badge_col:
             st.markdown(
-                '<div style="text-align:right">'
+                '<div style="text-align:right;margin-top:-0.1rem">'
                 + ui_modules.badge(p["latest_tier"], ui_modules.risk_level(p["latest_mean"])[1], dot=True)
                 + "</div>",
                 unsafe_allow_html=True,
             )
         with menu_col:
-            _patient_actions_menu(store, p, key)
+            _patient_actions_menu(store, p, i)
 
         if p["assessments"] > 1:
-            ui_modules.history_chart(p["history"])
+            ui_modules.history_chart(p["history"], key=f"history-chart-{i}")
         ui_modules.history_table(p["history"])
 
         latest = p["history"][0]
@@ -382,8 +394,6 @@ def patient_records():
         if latest["patient"].get("notes"):
             with st.expander("Clinical notes"):
                 st.write(latest["patient"]["notes"])
-
-    ui_modules.footer_note()
 
 
 def model_comparison():

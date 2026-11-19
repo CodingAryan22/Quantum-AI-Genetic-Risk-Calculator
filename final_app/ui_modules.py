@@ -494,13 +494,13 @@ def apply_theme(is_dark_mode: bool = False):
     }}
     [data-testid="stPopoverBody"] p {{ color: {t['text']} !important; }}
     /* "⋮" actions menu (Patient records): small square button, menu-style items. */
-    .st-key-patient-actions [data-testid="stPopoverButton"] {{
+    [class*="st-key-patient-actions-"] [data-testid="stPopoverButton"] {{
         min-height: 38px !important; width: 38px !important; padding: 0 !important;
         justify-content: center !important; border-radius: 8px !important;
     }}
-    .st-key-patient-actions [data-testid="stPopoverButton"] > div {{ justify-content: center !important; gap: 0 !important; }}
+    [class*="st-key-patient-actions-"] [data-testid="stPopoverButton"] > div {{ justify-content: center !important; gap: 0 !important; }}
     /* hide the dropdown chevron next to the ⋮ icon */
-    .st-key-patient-actions [data-testid="stPopoverButton"] > div > div:last-child:not(:first-child) {{ display: none !important; }}
+    [class*="st-key-patient-actions-"] [data-testid="stPopoverButton"] > div > div:last-child:not(:first-child) {{ display: none !important; }}
     [data-testid="stPopoverBody"] [data-testid="stBaseButton-tertiary"] {{
         justify-content: flex-start !important; padding: 0.45rem 0.6rem !important;
         border-radius: 6px !important; min-height: 0 !important;
@@ -518,6 +518,12 @@ def apply_theme(is_dark_mode: bool = False):
     [data-testid="stExpander"] summary p, [data-testid="stExpander"] summary span,
     [data-testid="stExpander"] [data-testid="stIconMaterial"] {{ color: {t['text']} !important; }}
     [data-testid="stExpander"] summary:hover p {{ color: {t['primary_text']} !important; }}
+    /* Streamlit paints the header of an open (or hovered) expander light; keep it themed. */
+    [data-testid="stExpander"] summary, [data-testid="stExpander"] summary:hover,
+    [data-testid="stExpander"] details[open] > summary {{
+        background: {t['surface']} !important;
+    }}
+    [data-testid="stExpander"] details[open] > summary {{ border-bottom: 1px solid {t['border']} !important; }}
     /* Segmented controls (e.g. the tier filter on Patient records) follow the theme. */
     [data-testid="stBaseButton-segmented_control"] {{
         background: {t['surface']} !important; border-color: {t['input_border']} !important;
@@ -673,6 +679,16 @@ def sidebar_footer():
     st.markdown(
         '<div class="sb-foot">Educational estimate only — not a substitute for genetic '
         'counseling. See <b>About &amp; method</b>.</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def section_title(title: str, subtitle: str = ""):
+    """A heading between cards (smaller than the page title)."""
+    sub = f'<div class="card-s">{_esc(subtitle)}</div>' if subtitle else ""
+    st.markdown(
+        f'<div style="margin:0.25rem 0 0.75rem 0"><div class="card-t" style="font-size:1.15rem">'
+        f'{_esc(title)}</div>{sub}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1562,7 +1578,7 @@ def _initials(name: str) -> str:
     return "".join(p[0] for p in parts[:2]).upper() or "?"
 
 
-def history_chart(history: list):
+def history_chart(history: list, key: str | None = None):
     """Risk over time for one patient, with the 90% range as a band."""
     t = tokens()
     pts = sorted(history, key=lambda r: r["created_at"])
@@ -1587,7 +1603,7 @@ def history_chart(history: list):
                    title=dict(text="Estimated risk", font=dict(size=13))),
     )
     fig.update_layout(margin=dict(l=56, r=16, t=12, b=40))
-    st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)
+    st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None, key=key)
 
 
 def history_table(history: list):
