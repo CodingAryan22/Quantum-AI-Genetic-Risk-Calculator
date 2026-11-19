@@ -178,7 +178,6 @@ def render_collection_form():
                 min_value=0,
                 max_value=10,
                 step=1,
-                value=0,
                 help="Parents, brothers, sisters and children diagnosed with breast, "
                 "ovarian, colorectal, prostate or another related cancer.",
                 key=_wk("family_first"),
@@ -188,7 +187,6 @@ def render_collection_form():
                 min_value=0,
                 max_value=10,
                 step=1,
-                value=0,
                 help="Grandparents, aunts, uncles, nieces, nephews and half-siblings.",
                 key=_wk("family_second"),
             )
@@ -283,3 +281,20 @@ def validate_patient(patient_data: dict) -> list[str]:
     if weight and not 2 <= weight <= 350:
         problems.append("Weight should be between 2 and 350 kg.")
     return problems
+
+
+def keep_form_values():
+    """
+    Re-saves every form field's current value in session state.
+
+    Streamlit deletes a widget's state on any run where the widget isn't drawn,
+    so leaving the New assessment page would wipe the form. Writing each value
+    back to its own key on every run (before any page draws) keeps it. The lab
+    report upload is skipped: Streamlit doesn't allow setting file uploads.
+    """
+    for field in FORM_FIELDS:
+        if field == "lab_report":
+            continue
+        key = _wk(field)
+        if key in st.session_state:
+            st.session_state[key] = st.session_state[key]

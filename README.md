@@ -11,6 +11,7 @@ results into a plain-language summary with Google Gemini.
 
 ## Features
 
+- **Five pages** in a sidebar menu: Home, New assessment, Results (Overview / Models / Details tabs), Model comparison, About & method
 - **Patient form** with validation: demographics, genetic markers, family history (1st- and 2nd-degree relatives), notes and lab report upload
 - **Rule-based score** with 1,500-run **Monte Carlo** uncertainty (mean and 90% interval)
 - **Three trained models** predicting 20-year risk:
@@ -78,7 +79,8 @@ See `final_app/ml/synthetic_data.py` for the full description. In short:
 
 ```
 final_app/
-  final_app.py        Streamlit entry point (assessment + model comparison tabs)
+  final_app.py        Streamlit entry point: sidebar navigation, theme
+  views.py            pages: Home, New assessment, Results, Model comparison, About
   data_manager.py     patient form and validation
   quantum_engine.py   rule-based score + Monte Carlo uncertainty simulation
   ai_synthesizer.py   de-identified Gemini prompt and summary

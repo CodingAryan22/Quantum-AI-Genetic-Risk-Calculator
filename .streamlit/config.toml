@@ -5,3 +5,7 @@ backgroundColor = "#F9FAFB"
 secondaryBackgroundColor = "#F2F4F7"
 textColor = "#101828"
 font = "sans serif"
+
+[global]
+# The form re-saves its own widget values so they survive switching pages.
+disableWidgetStateDuplicationWarning = true

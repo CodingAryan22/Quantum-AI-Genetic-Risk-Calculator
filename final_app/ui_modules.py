@@ -502,6 +502,76 @@ def apply_theme(is_dark_mode: bool = False):
         margin-top: 2rem; padding-top: 1rem; border-top: 1px solid {t['border']};
     }}
     .stSpinner > div {{ border-top-color: {PRIMARY} !important; }}
+
+    /* ---------- Sidebar navigation ---------- */
+    [data-testid="stSidebar"] [data-testid="stPageLink"] {{ margin: 0; }}
+    [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {{
+        border-radius: 8px; padding: 0.45rem 0.75rem; text-decoration: none;
+        background: transparent;
+    }}
+    [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] p,
+    [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] span {{
+        color: {t['text']} !important; font-weight: 500 !important; font-size: 0.92rem !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover {{ background: {t['subtle']} !important; }}
+    .st-key-nav {{ gap: 0.15rem !important; margin-bottom: 0.5rem; }}
+    .st-key-nav-active {{ gap: 0 !important; }}
+    [data-testid="stSidebar"] [data-testid="stPageLink"] p {{ margin: 0 !important; line-height: 1.4 !important; }}
+    .st-key-nav-active [data-testid="stPageLink-NavLink"] {{ background: {t['primary_soft']} !important; }}
+    .st-key-nav-active [data-testid="stPageLink-NavLink"] p,
+    .st-key-nav-active [data-testid="stPageLink-NavLink"] span {{
+        color: {t['primary_text']} !important; font-weight: 600 !important;
+    }}
+
+    /* ---------- Patient summary bar (Results) ---------- */
+    .ps {{ padding: 0.1rem 0; }}
+    .ps-top {{ display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }}
+    .ps-name {{ font-size: 1.6rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; }}
+    .ps-chips {{ display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }}
+    .ps-chip {{
+        font-size: 0.8rem; color: {t['text']}; background: {t['surface']};
+        border: 1px solid {t['border']}; border-radius: 999px; padding: 0.15rem 0.65rem;
+    }}
+
+    /* ---------- Headline risk card (Results > Overview) ---------- */
+    .hl {{
+        display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap;
+        background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px;
+        box-shadow: {t['shadow']}; padding: 1.5rem 1.75rem; margin-top: 1rem;
+    }}
+    .hl-left {{ min-width: 170px; }}
+    .hl-num {{ font-size: 3.4rem; font-weight: 700; color: {t['heading']}; letter-spacing: -0.03em; line-height: 1.05; margin: 0.25rem 0 0.5rem 0; }}
+    .hl-num span {{ font-size: 1.8rem; font-weight: 600; color: {t['muted']}; margin-left: 0.1rem; }}
+    .hl-right {{ flex: 1; min-width: 260px; }}
+    .hl-range {{ color: {t['text']}; font-size: 1rem; margin-bottom: 0.9rem; }}
+    .hl-range b {{ color: {t['heading']}; }}
+    .hl-scale {{ position: relative; height: 14px; border-radius: 999px; overflow: hidden; background: {t['subtle']}; }}
+    .hl-zone {{ position: absolute; top: 0; bottom: 0; opacity: 0.9; }}
+    .z-good {{ background: {t['good'][0]}; }}
+    .z-warn {{ background: {t['warn'][0]}; }}
+    .z-bad {{ background: {t['bad'][0]}; }}
+    .hl-band {{ position: absolute; top: 2px; bottom: 2px; border-radius: 999px; background: {t['line']}; opacity: 0.45; }}
+    .hl-mark {{ position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; border-radius: 2px; background: {PRIMARY_DARK}; }}
+    .hl-ticks {{ position: relative; height: 1.2rem; margin-top: 0.3rem; font-size: 0.75rem; color: {t['muted']}; }}
+    .hl-ticks span {{ position: absolute; transform: translateX(-50%); }}
+    .hl-ticks span:first-child {{ transform: none; }}
+    .hl-ticks span:last-child {{ transform: translateX(-100%); }}
+    .hl-note {{ font-size: 0.85rem; color: {t['muted']}; margin-top: 0.6rem; line-height: 1.5; }}
+    .hl-note b {{ color: {t['text']}; }}
+
+    /* ---------- About page ---------- */
+    .ab-steps {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 0.75rem; }}
+    @media (max-width: 900px) {{ .ab-steps {{ grid-template-columns: 1fr; }} }}
+    .ab-step {{ display: flex; gap: 0.75rem; align-items: flex-start; }}
+    .ab-n {{
+        flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+        background: {t['primary_soft']}; color: {t['primary_text']}; font-weight: 600; font-size: 0.85rem;
+        border: 1px solid {t['primary_soft_border']};
+    }}
+    .ab-t {{ font-weight: 600; color: {t['heading']}; font-size: 0.95rem; }}
+    .ab-s {{ color: {t['muted']}; font-size: 0.85rem; margin-top: 0.2rem; line-height: 1.5; }}
+    .ab-body p {{ color: {t['text']}; font-size: 0.9rem !important; line-height: 1.6 !important; margin: 0.6rem 0 0 0; }}
+    .ab-body b {{ color: {t['heading']}; }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -526,20 +596,10 @@ def sidebar_label(text: str):
     st.markdown(f'<div class="sb-label">{_esc(text)}</div>', unsafe_allow_html=True)
 
 
-def sidebar_promo():
+def sidebar_footer():
     st.markdown(
-        """
-        <div class="sb-promo">
-            <b>How the assessment works</b>
-            <ol>
-                <li>Enter demographics, markers and family history.</li>
-                <li>A rule-based score sets the baseline; 1,500 Monte Carlo runs estimate the spread.</li>
-                <li>Classical and quantum ML models predict 20-year risk and explain it.</li>
-                <li>AI turns the de-identified numbers into plain guidance.</li>
-            </ol>
-        </div>
-        <div class="sb-foot">Educational estimate only — not a substitute for genetic counseling.</div>
-        """,
+        '<div class="sb-foot">Educational estimate only — not a substitute for genetic '
+        'counseling. See <b>About &amp; method</b>.</div>',
         unsafe_allow_html=True,
     )
 
@@ -617,27 +677,13 @@ and writes a plain-language clinical summary.</p>
     )
 
 
-def feature_tiles():
-    tiles = [
-        ("🧬", "4", "Genetic markers screened", "Hereditary cancer genes plus family history, age and smoking."),
-        ("⚛️", "3", "Trained ML models", "Logistic regression, random forest and a Qiskit quantum kernel SVM."),
-        ("🤖", "AI", "Clinical summary", "De-identified results turned into next steps a patient can follow."),
-    ]
-    cells = "".join(
-        f'<div class="feat"><div class="feat-ic">{ic}</div><div class="feat-num">{num}</div>'
-        f'<div class="feat-t">{title}</div><div class="feat-s">{body}</div></div>'
-        for ic, num, title, body in tiles
-    )
-    st.markdown(f'<div class="feat-grid">{cells}</div>', unsafe_allow_html=True)
-
-
 def empty_results():
     st.markdown(
         """<div class="empty">
 <div class="empty-ic">📊</div>
 <div class="empty-t">No analysis yet</div>
-<div class="empty-s">Fill in the patient details above and generate an analysis.
-Charts, risk factors and the AI summary will appear here.</div>
+<div class="empty-s">Fill in a patient's details on the New assessment page and generate
+an analysis. The headline risk, model predictions and AI summary will appear here.</div>
 <div class="steps">
 <span class="step"><b>1</b>Demographics</span><span class="step-sep">→</span>
 <span class="step"><b>2</b>Markers &amp; history</span><span class="step-sep">→</span>
@@ -803,11 +849,6 @@ def hint(title: str, body: str):
     st.markdown(f'<div class="hint"><b>{_esc(title)}</b><span>{_esc(body)}</span></div>', unsafe_allow_html=True)
 
 
-# Kept for backwards compatibility with older callers.
-def section_header_card(title: str, subtitle: str = ""):
-    card_header(title, subtitle, right_html="")
-
-
 # ==========================================
 # RISK HELPERS
 # ==========================================
@@ -888,31 +929,6 @@ def _base_layout(t, height):
         font=dict(family="Inter, sans-serif", size=14, color=t["muted"]),
         hoverlabel=dict(bgcolor=t["surface"], bordercolor=t["border"], font=dict(color=t["heading"], size=14)),
     )
-
-
-def tier_donut(risk_plot):
-    t = tokens()
-    _, _, tiers = _distribution_from_figure(risk_plot)
-    labels = [f"{k}  ·  {v:.0f}%" for k, v in tiers.items()]
-    fig = go.Figure(
-        go.Pie(
-            labels=labels,
-            values=list(tiers.values()),
-            hole=0.58,
-            sort=False,
-            direction="clockwise",
-            marker=dict(colors=t["seq"], line=dict(color=t["surface"], width=2)),
-            textinfo="none",
-            hovertemplate="%{label}<extra></extra>",
-        )
-    )
-    fig.update_layout(
-        **_base_layout(t, 300),
-        showlegend=True,
-        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.04, yanchor="top",
-                    font=dict(color=t["text"], size=14)),
-    )
-    return fig
 
 
 def distribution_area(risk_plot, mean: float, ci_low: float, ci_high: float):
@@ -1262,3 +1278,143 @@ def model_comparison(metrics: dict):
                           yaxis=dict(automargin=True, tickfont=dict(color=t["text"], size=13)))
         fig.update_layout(margin=dict(l=8, r=16, t=8, b=32))
         st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)
+
+
+# ==========================================
+# RESULTS PAGE PIECES
+# ==========================================
+def patient_summary(patient: dict, right_badge: str = ""):
+    """One-line patient summary shown above the results (replaces the full form)."""
+    try:
+        from features import positive_markers
+    except ModuleNotFoundError:
+        from .features import positive_markers
+    family = patient.get("Family History", {}) or {}
+    first, second = family.get("First-degree", 0) or 0, family.get("Second-degree", 0) or 0
+    age = patient.get("Age")
+    markers = positive_markers(patient) + list(patient.get("Other Genetic Markers", []))
+    bits = [
+        f"{int(age)} yrs" if age is not None else None,
+        patient.get("Gender") if patient.get("Gender") not in (None, "Select") else None,
+        (patient.get("Smoking History") or "").replace("Smoked", "smoked").replace("Smoker", "smoker"),
+        ", ".join(markers) if markers else "No scored mutations",
+        f"{first} first-degree · {second} second-degree relatives" if (first or second) else "No family history",
+    ]
+    chips = "".join(f'<span class="ps-chip">{_esc(b)}</span>' for b in bits if b)
+    st.markdown(
+        f"""<div class="ps">
+            <div class="ps-top"><span class="ps-name">{_esc(patient.get('Name') or 'Patient')}</span>{right_badge}</div>
+            <div class="ps-chips">{chips}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def headline_card(mean: float, ci_low: float, ci_high: float, model_preds: dict | None = None):
+    """The one number to read first: estimated risk, its likely range, and where it sits on 0-100%."""
+    label, kind = risk_level(mean)
+    models_line = ""
+    if model_preds:
+        vals = [v * 100 for v in model_preds.values()]
+        models_line = (f" The three ML models predict <b>{min(vals):.0f}–{max(vals):.0f}%</b> "
+                       f"over 20 years; see the <b>Models</b> tab.")
+    st.markdown(
+        f"""<div class="hl">
+            <div class="hl-left">
+                <div class="kpi-label">Estimated risk</div>
+                <div class="hl-num">{mean:.0f}<span>%</span></div>
+                {badge(label, kind, dot=True)}
+            </div>
+            <div class="hl-right">
+                <div class="hl-range">Likely between <b>{ci_low:.0f}%</b> and <b>{ci_high:.0f}%</b></div>
+                <div class="hl-scale">
+                    <div class="hl-zone z-good" style="left:0;width:20%"></div>
+                    <div class="hl-zone z-warn" style="left:20%;width:30%"></div>
+                    <div class="hl-zone z-bad" style="left:50%;width:50%"></div>
+                    <div class="hl-band" style="left:{ci_low:.1f}%;width:{max(ci_high - ci_low, 0.8):.1f}%"></div>
+                    <div class="hl-mark" style="left:{mean:.1f}%"></div>
+                </div>
+                <div class="hl-ticks"><span style="left:0">0%</span><span style="left:20%">20%</span>
+                    <span style="left:50%">50%</span><span style="left:100%">100%</span></div>
+                <div class="hl-note">Rule-based score with 1,500 Monte Carlo runs; the range is the
+                    middle 90% of runs.{models_line}</div>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def footer_note():
+    st.markdown(
+        '<div class="footer-note">This tool provides an educational risk estimate and does '
+        "not replace professional genetic counseling or clinical diagnosis.</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ==========================================
+# ABOUT PAGE
+# ==========================================
+def about_page(metrics: dict | None):
+    page_header("About & method", "How RiskPredict works, what the data is, and its limits.")
+    steps = [
+        ("Enter the patient", "Demographics, the four scored genes (BRCA1, BRCA2, APC, TP53), "
+                              "other reported mutations, smoking and family history."),
+        ("Rule-based score", "Hand-weighted points for each factor, plus 1,500 Monte Carlo runs "
+                             "to show how certain the estimate is (90% range)."),
+        ("Machine-learning models", "Logistic regression, a random forest and a 9-qubit quantum "
+                                    "kernel SVM predict 20-year risk; the logistic regression "
+                                    "explains which factors drive it."),
+        ("AI summary and report", "Gemini turns de-identified results into plain-language "
+                                  "guidance; everything can be exported as a PDF."),
+    ]
+    step_html = "".join(
+        f'<div class="ab-step"><div class="ab-n">{i}</div><div><div class="ab-t">{_esc(t)}</div>'
+        f'<div class="ab-s">{_esc(b)}</div></div></div>'
+        for i, (t, b) in enumerate(steps, 1)
+    )
+    with card("how"):
+        card_header("How an assessment works", "", right_html="")
+        st.markdown(f'<div class="ab-steps">{step_html}</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    left, right = st.columns(2, gap="medium")
+    with left:
+        with card("data"):
+            card_header("Data and models", "", right_html=badge("Synthetic data", "warn", dot=True))
+            if metrics:
+                d, q = metrics["dataset"], metrics["quantum"]
+                best = max(metrics["models"].items(), key=lambda kv: kv[1]["auc"])
+                body = (
+                    f"<p>The models are trained on <b>{d['n_patients']:,} simulated patients</b>, not real people. "
+                    f"Each one's risk is built from published lifetime-risk figures (NCI, GeneReviews, SEER) "
+                    f"plus stated assumptions, and their outcome is drawn from that risk.</p>"
+                    f"<p>Outcome: {_esc(d['outcome'])} ({d['outcome_rate'] * 100:.0f}% of patients). "
+                    f"Best test AUC: <b>{_esc(best[0])}</b> ({best[1]['auc']:.3f}); the best possible "
+                    f"on this data is {d['oracle_auc']:.3f}.</p>"
+                    f"<p>The quantum model uses {q['qubits']} qubits ({_esc(q['feature_map'])}), "
+                    f"simulated exactly with Qiskit.</p>"
+                )
+            else:
+                body = "<p>Models are not trained yet. Run <code>python -m ml.train</code>.</p>"
+            st.markdown(f'<div class="ab-body">{body}</div>', unsafe_allow_html=True)
+    with right:
+        with card("privacy"):
+            card_header("Privacy", "", right_html="")
+            st.markdown(
+                '<div class="ab-body"><p>Only de-identified data is sent to the AI: no name, a '
+                '10-year age band instead of the exact age, and emails, phone numbers and ID numbers '
+                'removed from the notes.</p><p>Patient details stay in this browser session and are '
+                'cleared with <b>Clear all records</b>. Nothing is stored on a server.</p></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        with card("limits"):
+            card_header("Limitations", "", right_html="")
+            st.markdown(
+                '<div class="ab-body"><p>RiskPredict is an educational project. Its numbers are not '
+                'validated on real patients and must not be used for diagnosis or treatment '
+                'decisions. Genetic results should always be interpreted with a doctor or genetic '
+                'counselor.</p></div>',
+                unsafe_allow_html=True,
+            )
