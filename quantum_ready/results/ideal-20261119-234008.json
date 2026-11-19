@@ -1,0 +1,56 @@
+{
+  "args": {
+    "backend": "ideal",
+    "train": 40,
+    "test": 40,
+    "shots": 2000,
+    "reps": 2,
+    "entanglement": "full",
+    "scale": 0.02,
+    "C": 1.0,
+    "fake": "FakeTorino",
+    "ibm_backend": null,
+    "seed": 0,
+    "no_mitigation": false,
+    "dry_run": false,
+    "no_save": false
+  },
+  "circuit": {
+    "backend": "Aer simulator (aer_simulator), ideal qubits",
+    "shots": 2000,
+    "logical_circuit": {
+      "qubits": 9,
+      "depth": 153,
+      "two_qubit_gates": 288,
+      "gate_counts": {
+        "cx": 288,
+        "u": 216,
+        "measure": 9,
+        "barrier": 1
+      }
+    },
+    "device_circuit": {
+      "qubits": 9,
+      "depth": 151,
+      "two_qubit_gates": 286,
+      "gate_counts": {
+        "cx": 286,
+        "p": 180,
+        "h": 36,
+        "measure": 9,
+        "barrier": 1
+      }
+    }
+  },
+  "result": {
+    "exact_auc": 0.6969696969696969,
+    "exact_seconds": 2.067,
+    "backend_auc": 0.6926406926406926,
+    "kernel_mean_abs_error": 0.007483217215212938,
+    "mean_kernel_exact": 0.38636206184771377,
+    "mean_kernel_backend": 0.38653575949367086,
+    "circuits_run": 2380,
+    "seconds": 64.2,
+    "job_ids": []
+  }
+}

@@ -103,6 +103,13 @@ Sensitivity, specificity and F1 count a predicted risk ≥ 20% as "at risk".
 - The quantum kernel SVM is competitive with logistic regression, but it doesn't beat the classical models.
 - Cross-validation picked very small rotation angles for the quantum model. That's when its kernel behaves most like a smooth classical kernel, which matches published findings that quantum kernels rarely help on small, low-dimensional tabular data.
 
+## Quantum hardware readiness
+
+The web app simulates the quantum circuit exactly. [`quantum_ready/`](quantum_ready/README.md) runs the
+same circuit the way a quantum computer does: as measured shots, compiled for a real IBM processor,
+on an ideal simulator, on a simulator with that processor's real noise (with error mitigation), or on
+real IBM Quantum hardware once an API key is added. It is kept separate from the app.
+
 ## How the synthetic data is made
 
 See `final_app/ml/synthetic_data.py` for the full description. In short:
@@ -134,6 +141,7 @@ final_app/
     predictor.py      loads models, predicts and explains one patient
   data/               synthetic_patients.csv
   models/             trained models + metrics.json
+quantum_ready/        the same quantum kernel on simulators and IBM Quantum hardware (separate from the app)
 tests/                pytest suite (run: python -m pytest tests)
 archive/              earlier prototypes, kept for reference
 .github/workflows/    CI: runs the tests on every push

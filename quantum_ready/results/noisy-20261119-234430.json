@@ -1,0 +1,68 @@
+{
+  "args": {
+    "backend": "noisy",
+    "train": 20,
+    "test": 20,
+    "shots": 1000,
+    "reps": 2,
+    "entanglement": "full",
+    "scale": 0.02,
+    "C": 1.0,
+    "fake": "FakeTorino",
+    "ibm_backend": null,
+    "seed": 0,
+    "no_mitigation": false,
+    "dry_run": false,
+    "no_save": false
+  },
+  "circuit": {
+    "backend": "Aer simulator with real-device noise (aer_simulator_from(fake_torino))",
+    "shots": 1000,
+    "logical_circuit": {
+      "qubits": 9,
+      "depth": 153,
+      "two_qubit_gates": 288,
+      "gate_counts": {
+        "cx": 288,
+        "u": 216,
+        "measure": 9,
+        "barrier": 1
+      }
+    },
+    "device_circuit": {
+      "qubits": 133,
+      "depth": 1116,
+      "two_qubit_gates": 677,
+      "gate_counts": {
+        "sx": 1206,
+        "rz": 849,
+        "cz": 677,
+        "measure": 9,
+        "x": 5,
+        "barrier": 1
+      }
+    },
+    "physical_qubits": [
+      33,
+      32,
+      37,
+      31,
+      18,
+      12,
+      11,
+      13,
+      10
+    ]
+  },
+  "result": {
+    "exact_auc": 0.5098039215686274,
+    "exact_seconds": 0.923,
+    "backend_auc": 0.3333333333333333,
+    "kernel_mean_abs_error": 0.0870923739611902,
+    "mean_kernel_exact": 0.3725175191333194,
+    "mean_kernel_backend": 0.41447683268409025,
+    "circuits_run": 630,
+    "seconds": 320.4,
+    "job_ids": []
+  }
+}

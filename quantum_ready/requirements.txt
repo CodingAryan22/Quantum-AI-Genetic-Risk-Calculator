@@ -1,0 +1,7 @@
+qiskit~=2.3.0
+qiskit-aer==0.18.4
+qiskit-ibm-runtime==0.52.1
+scikit-learn~=1.8.0
+numpy
+pandas
+pytest
