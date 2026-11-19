@@ -493,6 +493,24 @@ def apply_theme(is_dark_mode: bool = False):
         background: {t['surface']} !important; border: 1px solid {t['input_border']} !important;
     }}
     [data-testid="stPopoverBody"] p {{ color: {t['text']} !important; }}
+    /* "⋮" actions menu (Patient records): small square button, menu-style items. */
+    .st-key-patient-actions [data-testid="stPopoverButton"] {{
+        min-height: 38px !important; width: 38px !important; padding: 0 !important;
+        justify-content: center !important; border-radius: 8px !important;
+    }}
+    .st-key-patient-actions [data-testid="stPopoverButton"] > div {{ justify-content: center !important; gap: 0 !important; }}
+    /* hide the dropdown chevron next to the ⋮ icon */
+    .st-key-patient-actions [data-testid="stPopoverButton"] > div > div:last-child:not(:first-child) {{ display: none !important; }}
+    [data-testid="stPopoverBody"] [data-testid="stBaseButton-tertiary"] {{
+        justify-content: flex-start !important; padding: 0.45rem 0.6rem !important;
+        border-radius: 6px !important; min-height: 0 !important;
+        border: none !important; background: transparent !important; box-shadow: none !important;
+    }}
+    [data-testid="stPopoverBody"] [data-testid="stBaseButton-tertiary"] p,
+    [data-testid="stPopoverBody"] [data-testid="stBaseButton-tertiary"] span {{ color: {t['heading']} !important; }}
+    [data-testid="stPopoverBody"] [data-testid="stBaseButton-tertiary"]:hover {{ background: {t['subtle']} !important; }}
+    [data-testid="stPopoverBody"] hr {{ margin: 0.4rem 0 !important; border-color: {t['border']} !important; }}
+    [data-testid="stPopoverBody"] label p {{ font-size: 0.85rem !important; }}
     /* Expanders (e.g. "Latest AI clinical summary"). */
     [data-testid="stExpander"] details {{
         background: {t['surface']} !important; border: 1px solid {t['border']} !important; border-radius: 10px !important;

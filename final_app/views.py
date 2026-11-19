@@ -240,24 +240,71 @@ def results():
     ui_modules.footer_note()
 
 
+def _patient_actions_menu(store, p: dict, key: str):
+    """The "⋮" menu on a patient's history: downloads, then delete with confirmation."""
+    fname = storage.safe_filename(p["name"])
+    # The keyed container lets the theme CSS shape the button into a small "⋮" square.
+    with st.container(key="patient-actions"), st.popover(
+        "", icon=":material/more_vert:", key="patient-actions-menu",
+    ):
+        st.download_button(
+            "Download PDF report", icon=":material/picture_as_pdf:", type="tertiary",
+            data=pdf_builder.generate_patient_history_pdf(p),
+            file_name=f"{fname}_history.pdf", mime="application/pdf",
+            width="stretch", on_click="ignore", key=f"pdf-{key}",
+        )
+        st.download_button(
+            "Download CSV", icon=":material/table:", type="tertiary",
+            data=storage.records_to_csv(p["history"]),
+            file_name=f"{fname}_history.csv", mime="text/csv",
+            width="stretch", on_click="ignore", key=f"csv-{key}",
+        )
+        st.divider()
+        n = p["assessments"]
+        what = "this record" if n == 1 else f"all {n} records"
+        sure = st.checkbox(f"Yes, delete {what} (can't be undone)", key=f"del-confirm-{key}")
+        if st.button("Delete records", icon=":material/delete:", width="stretch",
+                     disabled=not sure, key=f"del-{key}"):
+            removed = store.delete_patient(key)
+            st.session_state.pop(f"del-confirm-{key}", None)
+            st.toast(f"Deleted {removed} record(s) for {p['name']}.", icon="🗑️")
+            st.rerun()
+
+
 def patient_records():
     store, error = get_store()
     where = (f"MongoDB · {store.location}" if store.name == "MongoDB" else "Local file")
-    ui_modules.page_header(
-        "Patient records",
-        "Every saved assessment, grouped by patient name.",
-        ui_modules.badge(where, "good" if store.name == "MongoDB" else "warn", dot=True),
-    )
+    try:
+        patients = storage.group_patients(store.all_records())
+        read_error = None
+    except Exception as exc:
+        patients, read_error = [], exc
+
+    # Header: title on the left, "Export all" on the top right.
+    head_col, export_col = st.columns([2.4, 1], vertical_alignment="center")
+    with head_col:
+        ui_modules.page_header(
+            "Patient records",
+            "Every saved assessment, grouped by patient name.",
+            ui_modules.badge(where, "good" if store.name == "MongoDB" else "warn", dot=True),
+        )
+    with export_col:
+        st.download_button(
+            "Export all (CSV)", icon=":material/download:",
+            data=storage.records_to_csv([r for p in patients for r in p["history"]]),
+            file_name=f"riskpredict_all_patients_{datetime.now():%Y%m%d}.csv",
+            mime="text/csv", width="stretch", on_click="ignore", key="export-all",
+            disabled=not patients,
+            help=f"Every saved assessment for all {len(patients)} patients, one row per assessment.",
+        )
     if error:
         ui_modules.hint(
             "MongoDB not reachable, using a local file instead.",
             f"Start MongoDB or set MONGODB_URI, then reload. ({error})",
         )
 
-    try:
-        patients = storage.group_patients(store.all_records())
-    except Exception as exc:
-        st.error(f"Could not read records: {exc}", icon=":material/error:")
+    if read_error:
+        st.error(f"Could not read records: {read_error}", icon=":material/error:")
         return
 
     if not patients:
@@ -269,22 +316,13 @@ def patient_records():
     ui_modules.records_stats(patients)
     _gap(1)
 
-    search_col, tier_col, export_col = st.columns([1.5, 1.3, 1], vertical_alignment="bottom")
+    search_col, tier_col = st.columns([1.6, 1.4], vertical_alignment="bottom")
     with search_col:
         query = st.text_input("Search", placeholder="Search by name, mutation or disease",
                               key="records-search", label_visibility="collapsed")
     with tier_col:
         tier = st.segmented_control("Tier", ["All", "Low", "Moderate", "High"], default="All",
                                     key="records-tier", label_visibility="collapsed")
-    with export_col:
-        all_records = [r for p in patients for r in p["history"]]
-        st.download_button(
-            "Export all (CSV)", icon=":material/download:",
-            data=storage.records_to_csv(all_records),
-            file_name=f"riskpredict_all_patients_{datetime.now():%Y%m%d}.csv",
-            mime="text/csv", width="stretch", on_click="ignore", key="export-all",
-            help=f"Every saved assessment for all {len(patients)} patients, one row per assessment.",
-        )
     q = (query or "").strip().lower()
     shown = [
         p for p in patients
@@ -315,11 +353,24 @@ def patient_records():
             key="records-patient",
         )
         p = names[key]
-        ui_modules.card_header(
-            f"{p['name']} · {p['assessments']} assessment{'s' if p['assessments'] != 1 else ''}",
-            "Risk over time. The shaded band is each assessment's 90% range.",
-            right_html=ui_modules.badge(p["latest_tier"], ui_modules.risk_level(p["latest_mean"])[1], dot=True),
-        )
+        # Patient header: name on the left; tier badge and a "⋮" actions menu on the right.
+        title_col, badge_col, menu_col = st.columns([6, 1.4, 0.5], vertical_alignment="center")
+        with title_col:
+            ui_modules.card_header(
+                f"{p['name']} · {p['assessments']} assessment{'s' if p['assessments'] != 1 else ''}",
+                "Risk over time. The shaded band is each assessment's 90% range.",
+                right_html="",
+            )
+        with badge_col:
+            st.markdown(
+                '<div style="text-align:right">'
+                + ui_modules.badge(p["latest_tier"], ui_modules.risk_level(p["latest_mean"])[1], dot=True)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+        with menu_col:
+            _patient_actions_menu(store, p, key)
+
         if p["assessments"] > 1:
             ui_modules.history_chart(p["history"])
         ui_modules.history_table(p["history"])
@@ -331,34 +382,6 @@ def patient_records():
         if latest["patient"].get("notes"):
             with st.expander("Clinical notes"):
                 st.write(latest["patient"]["notes"])
-
-        _gap(0.25)
-        fname = storage.safe_filename(p["name"])
-        pdf_col, csv_col, del_col = st.columns([1, 1, 1.3])
-        with pdf_col:
-            st.download_button(
-                "Download PDF", icon=":material/picture_as_pdf:", type="primary",
-                data=pdf_builder.generate_patient_history_pdf(p),
-                file_name=f"{fname}_history.pdf", mime="application/pdf",
-                width="stretch", on_click="ignore", key=f"pdf-{key}",
-                help="Patient details, linked diseases, every assessment and the latest AI summary.",
-            )
-        with csv_col:
-            st.download_button(
-                "Download CSV", icon=":material/table:",
-                data=storage.records_to_csv(p["history"]),
-                file_name=f"{fname}_history.csv", mime="text/csv",
-                width="stretch", on_click="ignore", key=f"csv-{key}",
-                help="This patient's assessments as a spreadsheet, one row per assessment.",
-            )
-        with del_col:
-            with st.popover("Delete records", icon=":material/delete:", width="stretch"):
-                st.write(f"This permanently deletes all {p['assessments']} saved assessments for "
-                         f"**{p['name']}**. It cannot be undone.")
-                if st.button("Yes, delete permanently", type="primary", key=f"del-{key}"):
-                    removed = store.delete_patient(key)
-                    st.toast(f"Deleted {removed} record(s) for {p['name']}.", icon="🗑️")
-                    st.rerun()
 
     ui_modules.footer_note()
 
