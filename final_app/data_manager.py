@@ -31,23 +31,31 @@ FORM_FIELDS = [
     "additional_details",
 ]
 
-# Suggestions for the "Other mutations" box. Users can also type anything else.
-SUGGESTED_MARKERS = [
-    "PALB2",
-    "CHEK2",
-    "ATM",
-    "PTEN",
-    "CDH1",
-    "STK11",
-    "MLH1",
-    "MSH2",
-    "MSH6",
-    "PMS2",
-    "RAD51C",
-    "RAD51D",
-    "BRIP1",
-    "MUTYH",
-]
+# Suggestions for the "Other mutations" box, with the cancers each gene is best
+# known for (shown in the dropdown). Users can also type any other gene.
+MARKER_INFO = {
+    "PALB2": "Breast/Pancreatic Cancer Risk",
+    "CHEK2": "Breast/Colorectal Cancer Risk",
+    "ATM": "Breast/Pancreatic Cancer Risk",
+    "PTEN": "Cowden Syndrome: Breast/Thyroid/Uterine",
+    "CDH1": "Diffuse Gastric/Lobular Breast Cancer Risk",
+    "STK11": "Peutz-Jeghers Syndrome: GI/Pancreatic/Breast",
+    "MLH1": "Lynch Syndrome: Colorectal/Endometrial",
+    "MSH2": "Lynch Syndrome: Colorectal/Endometrial",
+    "MSH6": "Lynch Syndrome: Colorectal/Endometrial",
+    "PMS2": "Lynch Syndrome: Colorectal/Endometrial",
+    "RAD51C": "Ovarian/Breast Cancer Risk",
+    "RAD51D": "Ovarian/Breast Cancer Risk",
+    "BRIP1": "Ovarian Cancer Risk",
+    "MUTYH": "MUTYH Polyposis: Colorectal Cancer Risk",
+}
+SUGGESTED_MARKERS = list(MARKER_INFO)
+
+
+def marker_label(gene: str) -> str:
+    """'PALB2 (Breast/Pancreatic Cancer Risk)'; genes typed by the user are shown as typed."""
+    info = MARKER_INFO.get(gene)
+    return f"{gene} ({info})" if info else gene
 
 
 def _generation() -> int:
@@ -301,6 +309,7 @@ def _step_markers():
         st.checkbox("TP53 (Li-Fraumeni Syndrome)", key=_wk("tp53"))
         st.multiselect(
             "Other mutations", SUGGESTED_MARKERS, accept_new_options=True,
+            format_func=marker_label,
             placeholder="Type a gene (e.g. PALB2) and press Enter",
             help="Pick from the list or type any mutation and press Enter to add it. "
             "These are included in the report and AI summary but not in the numeric score.",
