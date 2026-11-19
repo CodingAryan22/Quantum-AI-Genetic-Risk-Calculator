@@ -22,8 +22,27 @@ FORM_FIELDS = [
     "brca2",
     "apc",
     "tp53",
+    "other_markers",
     "lab_report",
     "additional_details",
+]
+
+# Suggestions for the "Other mutations" box. Users can also type anything else.
+SUGGESTED_MARKERS = [
+    "PALB2",
+    "CHEK2",
+    "ATM",
+    "PTEN",
+    "CDH1",
+    "STK11",
+    "MLH1",
+    "MSH2",
+    "MSH6",
+    "PMS2",
+    "RAD51C",
+    "RAD51D",
+    "BRIP1",
+    "MUTYH",
 ]
 
 
@@ -66,16 +85,8 @@ def clear_form():
 
 
 def _info_card(icon: str, title: str, body: str):
-    """Small reusable informational card used inside collection steps."""
-    st.markdown(
-        f"""
-        <div class="card" style="padding:0.9rem 1.1rem;margin-bottom:0.9rem;">
-            <div class="card-title" style="font-size:0.98rem;">{icon} {title}</div>
-            <div class="card-sub" style="margin-top:0.3rem;">{body}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Short hint line shown at the top of each form tab."""
+    ui_modules.hint(title, body)
 
 
 def render_collection_form():
@@ -86,13 +97,8 @@ def render_collection_form():
     The returned dictionary keeps the exact same schema as before so the
     quantum / AI / PDF modules continue to work unchanged.
     """
-    ui_modules.section_header_card(
-        "🩺 Patient Data Collection",
-        "Enter clinical and demographic details to generate a personalized risk assessment.",
-    )
-
     tabs = st.tabs(
-        ["🧬 Demographics & Vitals", "🩸 Medical History & Markers", "🗂️ Reports & Notes"]
+        ["Demographics & vitals", "Markers & history", "Reports & notes"]
     )
 
     # ---------------------------
@@ -106,9 +112,9 @@ def render_collection_form():
         )
         col1, col2, col3 = st.columns(3)
         with col1:
-            name = st.text_input("Full Name", placeholder="e.g. Jane Smith", key=_wk("name"))
+            name = st.text_input("Full Name *", placeholder="e.g. Jane Smith", key=_wk("name"))
             age = st.number_input(
-                "Age",
+                "Age *",
                 min_value=0,
                 max_value=120,
                 step=1,
@@ -118,7 +124,7 @@ def render_collection_form():
             )
         with col2:
             gender = st.selectbox(
-                "Gender", ["Select", "Male", "Female", "Other"], key=_wk("gender")
+                "Gender *", ["Select", "Male", "Female", "Other"], key=_wk("gender")
             )
             height = st.number_input(
                 "Height (cm)",
@@ -170,6 +176,15 @@ def render_collection_form():
             brca2 = st.checkbox("BRCA2 (Breast/Ovarian Cancer Risk)", key=_wk("brca2"))
             apc = st.checkbox("APC (Colorectal Cancer Risk)", key=_wk("apc"))
             tp53 = st.checkbox("TP53 (Li-Fraumeni Syndrome)", key=_wk("tp53"))
+            other_markers = st.multiselect(
+                "Other mutations",
+                SUGGESTED_MARKERS,
+                accept_new_options=True,
+                placeholder="Type a gene (e.g. PALB2) and press Enter",
+                help="Pick from the list or type any mutation and press Enter to add it. "
+                "These are included in the report and AI summary but not in the numeric score.",
+                key=_wk("other_markers"),
+            )
 
     # ---------------------------
     # STEP 3: Reports & Notes
@@ -193,6 +208,18 @@ def render_collection_form():
     # ---------------------------
     # Package everything into the standard dictionary
     # ---------------------------
+    core = {"BRCA1": brca1, "BRCA2": brca2, "APC": apc, "TP53": tp53}
+    extra = []
+    for marker in other_markers:
+        marker = marker.strip()
+        if not marker:
+            continue
+        # Typing one of the four scored genes counts as ticking its checkbox.
+        if marker.upper() in core:
+            core[marker.upper()] = True
+        elif marker.lower() not in {m.lower() for m in extra}:
+            extra.append(marker)
+
     patient_data = {
         "Name": name,
         "Age": age,
@@ -202,14 +229,34 @@ def render_collection_form():
         "Blood Group": blood_group,
         "Ancestry": ancestry,
         "Smoking History": smoking,
-        "Genetic Markers": {
-            "BRCA1": brca1,
-            "BRCA2": brca2,
-            "APC": apc,
-            "TP53": tp53,
-        },
+        "Genetic Markers": core,
+        "Other Genetic Markers": extra,
         "Lab Report": lab_report,
         "Additional Details": additional_details,
     }
 
     return patient_data
+
+
+def validate_patient(patient_data: dict) -> list[str]:
+    """
+    Returns a list of problems that should block the analysis (empty = OK).
+
+    Name, age and gender are required; height and weight are optional but
+    must be realistic when given.
+    """
+    problems = []
+    if not (patient_data.get("Name") or "").strip():
+        problems.append("Enter the patient's full name.")
+    if patient_data.get("Age") is None:
+        problems.append("Enter the patient's age.")
+    if patient_data.get("Gender") in (None, "Select"):
+        problems.append("Select the patient's gender.")
+
+    height = patient_data.get("Height")
+    if height and not 40 <= height <= 250:
+        problems.append("Height should be between 40 and 250 cm.")
+    weight = patient_data.get("Weight")
+    if weight and not 2 <= weight <= 350:
+        problems.append("Weight should be between 2 and 350 kg.")
+    return problems

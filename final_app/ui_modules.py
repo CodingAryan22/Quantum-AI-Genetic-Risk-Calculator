@@ -1,427 +1,993 @@
+"""
+UI layer: a clean SaaS-dashboard look (light gray canvas, white cards with
+hairline borders, one purple accent, soft badges) plus the dashboard widgets
+used to present a risk assessment.
+"""
+
+import html
+
+import plotly.graph_objects as go
 import streamlit as st
 
 # ==========================================
-# MODERN CLINICAL DASHBOARD THEME
+# DESIGN TOKENS
 # ==========================================
+PRIMARY = "#7F56D9"
+PRIMARY_DARK = "#6941C6"
 
-PRIMARY = "#0d9488"      # Teal
-PRIMARY_DARK = "#0f766e"
-ACCENT = "#0891b2"       # Cyan
-DANGER = "#e11d48"
-WARNING = "#d97706"
-LIGHT_BG = "#f8fafc"
-CARD_BG = "#ffffff"
-TEXT = "#0f172a"
-MUTED = "#64748b"
+LIGHT = {
+    "bg": "#F9FAFB",
+    "surface": "#FFFFFF",
+    "border": "#EAECF0",
+    "input_border": "#D0D5DD",
+    "heading": "#101828",
+    "text": "#344054",
+    "muted": "#667085",
+    "subtle": "#F2F4F7",
+    "primary_soft": "#F9F5FF",
+    "primary_soft_border": "#E9D7FE",
+    "primary_text": "#6941C6",
+    "shadow": "0 1px 2px rgba(16,24,40,0.05)",
+    "shadow_md": "0 1px 3px rgba(16,24,40,0.10), 0 1px 2px rgba(16,24,40,0.06)",
+    "good": ("#ECFDF3", "#067647", "#ABEFC6"),
+    "warn": ("#FFFAEB", "#B54708", "#FEDF89"),
+    "bad": ("#FEF3F2", "#B42318", "#FECDCA"),
+    "neutral": ("#F9FAFB", "#344054", "#EAECF0"),
+    # Sequential purple (low -> high magnitude) for chart fills
+    "seq": ["#D6BBFB", "#9E77ED", "#6941C6"],
+    "line": "#7F56D9",
+    "area": "rgba(127,86,217,0.14)",
+    "band": "rgba(127,86,217,0.07)",
+    "grid": "#F2F4F7",
+    "hero_top": "#F9F5FF",
+    "hero_glow": "rgba(158,119,237,0.22)",
+}
 
-
-def brand_html():
-    """Returns the header hero / branding markup used on the main screen."""
-    return f"""
-    <div class="hero">
-        <div class="hero-badge">HYBRID QUANTUM-AI CLINICAL DECISION SUPPORT</div>
-        <h1 class="hero-title">Genetic Disease Risk Prediction</h1>
-        <p class="hero-sub">Combining statistical Monte Carlo simulation with AI clinical synthesis
-        for a single, clear picture of hereditary risk.</p>
-        <div class="hero-pills">
-            <span class="pill">🧬 Quantum Simulation</span>
-            <span class="pill">🤖 AI Synthesis</span>
-            <span class="pill">📊 Risk Analytics</span>
-        </div>
-    </div>
-    """
-
-
-def section_header_card(title: str, subtitle: str = ""):
-    """Renders a standalone card used as a section header (safe for wrapping UI below)."""
-    st.markdown(
-        f"""
-        <div class="card">
-            <div class="card-head">
-                <div class="card-title">{title}</div>
-                <div class="card-sub">{subtitle}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def section_card(title: str, icon: str = "", subtitle: str = ""):
-    """Renders an open/close card wrapper with a header. Returns the closing div id."""
-    st.markdown(
-        f"""
-        <div class="card">
-            <div class="card-head">
-                <div class="card-title">{icon} {title}</div>
-                <div class="card-sub">{subtitle}</div>
-            </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    return "card-close"
-
-
-def card_close():
-    st.markdown("</div>", unsafe_allow_html=True)
+DARK = {
+    "bg": "#0C111D",
+    "surface": "#161B26",
+    "border": "#1F242F",
+    "input_border": "#333741",
+    "heading": "#F5F5F6",
+    "text": "#CECFD2",
+    "muted": "#94969C",
+    "subtle": "#1F242F",
+    "primary_soft": "#2C1C5F",
+    "primary_soft_border": "#53389E",
+    "primary_text": "#D6BBFB",
+    "shadow": "0 1px 2px rgba(0,0,0,0.30)",
+    "shadow_md": "0 1px 3px rgba(0,0,0,0.40)",
+    "good": ("#053321", "#75E0A7", "#085D3A"),
+    "warn": ("#4E1D09", "#FEC84B", "#93370D"),
+    "bad": ("#55160C", "#FDA29B", "#912018"),
+    "neutral": ("#1F242F", "#CECFD2", "#333741"),
+    "seq": ["#53389E", "#9E77ED", "#D6BBFB"],
+    "line": "#B692F6",
+    "area": "rgba(182,146,246,0.16)",
+    "band": "rgba(182,146,246,0.08)",
+    "grid": "#1F242F",
+    "hero_top": "#1C1530",
+    "hero_glow": "rgba(127,86,217,0.35)",
+}
 
 
+def tokens() -> dict:
+    return DARK if st.session_state.get("_dark_mode") else LIGHT
+
+
+def _esc(value) -> str:
+    return html.escape(str(value)) if value not in (None, "") else ""
+
+
+# ==========================================
+# THEME
+# ==========================================
 def apply_theme(is_dark_mode: bool = False):
-    """
-    Applies a consistent, modern clinical dashboard theme.
-    Theme is designed around light mode by default with a fully
-    fleshed-out dark mode for sustained data-entry sessions.
-    """
-    base_colors = {
-        "bg": "#0b1220" if is_dark_mode else LIGHT_BG,
-        "card": "#111827" if is_dark_mode else CARD_BG,
-        "card_border": "rgba(255,255,255,0.08)" if is_dark_mode else "#e2e8f0",
-        "sidebar": "#0f172a" if is_dark_mode else "#ffffff",
-        "heading": "#f9fafb" if is_dark_mode else "#0f172a",
-        "text": "#e2e8f0" if is_dark_mode else "#334155",
-        "muted": "#94a3b8" if is_dark_mode else MUTED,
-        "input_bg": "#0b1220" if is_dark_mode else "#ffffff",
-        "input_border": "#1e293b" if is_dark_mode else "#e2e8f0",
-        "shadow": "rgba(0,0,0,0.45)" if is_dark_mode else "rgba(15,23,42,0.06)",
-    }
+    st.session_state["_dark_mode"] = is_dark_mode
+    t = tokens()
+    good, warn, bad, neutral = t["good"], t["warn"], t["bad"], t["neutral"]
 
-    custom_css = f"""
+    css = f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* -- Global base -- */
-    html, body, [class*="css"] {{
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-size: 1rem;
+    html {{ font-size: 20px; }}
+    html, body, [class*="css"], .stApp, button, input, textarea, select {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }}
-    [data-testid="stAppViewContainer"] {{
-        background: {base_colors['bg']};
-    }}
-    [data-testid="stHeader"] {{
-        background: rgba(0,0,0,0) !important;
-        height: 0 !important;
-    }}
+    [data-testid="stAppViewContainer"], .stApp {{ background: {t['bg']}; }}
+    [data-testid="stHeader"] {{ background: transparent !important; }}
+    [data-testid="stToolbar"], [data-testid="stDecoration"] {{ display: none !important; }}
     .block-container {{
-        padding-top: 2.2rem !important;
+        padding-top: 2.4rem !important;
         padding-bottom: 4rem !important;
-        max-width: 1150px;
+        max-width: 1240px;
     }}
-    .stMarkdown p, .stMarkdown li, .stMarkdown ul, .stMarkdown span {{
-        font-size: 1rem !important;
-        line-height: 1.6 !important;
-    }}
+    p, li, label, .stMarkdown {{ color: {t['text']}; }}
+    h1, h2, h3, h4 {{ color: {t['heading']} !important; letter-spacing: -0.02em; }}
 
-    /* -- Sidebar -- */
+    /* ---------- Sidebar ---------- */
     [data-testid="stSidebar"] {{
-        background-color: {base_colors['sidebar']};
-        border-right: 1px solid {base_colors['card_border']};
+        background: {t['surface']};
+        border-right: 1px solid {t['border']};
     }}
-    [data-testid="stSidebar"] * {{
-        color: {base_colors['text']} !important;
-        font-size: 1rem !important;
+    [data-testid="stSidebar"] .block-container, [data-testid="stSidebarContent"] {{ padding-top: 0.6rem; }}
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] label {{ color: {t['text']} !important; }}
+    .sb-brand {{ display: flex; align-items: center; gap: 0.65rem; padding: 0.2rem 0 1.1rem 0; }}
+    .sb-logo {{
+        width: 34px; height: 34px; border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #B692F6, {PRIMARY_DARK} 70%);
+        box-shadow: inset 0 -4px 8px rgba(0,0,0,0.18);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px;
     }}
-    [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {{
-        font-size: 0.95rem !important;
+    .sb-name {{ font-weight: 600; font-size: 1.05rem; color: {t['heading']}; }}
+    .sb-label {{
+        font-size: 0.75rem; font-weight: 600; color: {t['muted']};
+        text-transform: uppercase; letter-spacing: 0.04em; margin: 1rem 0 0.35rem 0.25rem;
     }}
-    [data-testid="stSidebar"] .stSubheader, [data-testid="stSidebar"] h3 {{
-        font-size: 1.15rem !important;
+    [data-testid="stSidebar"] .stButton {{ margin: 0 0 0.5rem 0 !important; }}
+    [data-testid="stSidebar"] .stButton > button {{
+        min-height: 42px !important; border-radius: 8px !important;
+        background: {t['surface']} !important; color: {t['text']} !important;
+        border: 1px solid {t['input_border']} !important; box-shadow: {t['shadow']} !important;
+        font-weight: 600 !important;
     }}
-    .sidebar-brand {{
-        display: flex; align-items: center; gap: 0.6rem;
-        padding: 0.6rem 0.4rem 1rem 0.4rem;
-        border-bottom: 1px dashed {base_colors['card_border']};
-        margin-bottom: 1.2rem;
+    [data-testid="stSidebar"] .stButton > button:hover {{ background: {t['subtle']} !important; }}
+    .st-key-btn-clear-all button {{
+        color: {bad[1]} !important; border-color: {bad[2]} !important; background: {t['surface']} !important;
     }}
-    .sidebar-brand .logo {{
-        width: 38px; height: 38px; border-radius: 10px;
-        background: linear-gradient(135deg, {PRIMARY}, {ACCENT});
-        display: flex; align-items: center; justify-content: center;
-        font-size: 20px; color: #fff; flex-shrink: 0;
+    .st-key-btn-clear-all button:hover {{ background: {bad[0]} !important; }}
+    .st-key-btn-clear-all button p, .st-key-btn-clear-all button span {{ color: {bad[1]} !important; }}
+    .sb-promo {{
+        background: {t['primary_soft']}; border-radius: 10px; padding: 1rem;
+        margin-top: 1.4rem; font-size: 0.875rem; color: {t['text']};
     }}
-    .sidebar-brand .name {{ font-weight: 700; font-size: 1.02rem; color: {base_colors['heading']} !important; }}
-    .sidebar-brand .tag {{ font-size: 0.7rem; color: {base_colors['muted']} !important; letter-spacing: 0.04em; }}
+    .sb-promo b {{ color: {t['primary_text']}; display: block; margin-bottom: 0.3rem; font-weight: 600; }}
+    .sb-promo ol {{ margin: 0.4rem 0 0 1.1rem; padding: 0; }}
+    .sb-promo li {{ font-size: 0.85rem; margin: 0.15rem 0; color: {t['text']}; }}
+    .sb-foot {{
+        border-top: 1px solid {t['border']}; margin-top: 1.4rem; padding-top: 1rem;
+        font-size: 0.8rem; color: {t['muted']};
+    }}
 
-    /* -- Typography -- */
-    h1 {{
-        color: {base_colors['heading']} !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.01em;
-        font-size: 2.2rem !important;
-    }}
-    h2 {{
-        color: {base_colors['heading']} !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.01em;
-        font-size: 1.7rem !important;
-    }}
-    h3 {{
-        color: {base_colors['heading']} !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.01em;
-        font-size: 1.35rem !important;
-    }}
-    h4 {{
-        color: {base_colors['heading']} !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.01em;
-        font-size: 1.15rem !important;
-    }}
-    .stCaption, [data-testid="stCaptionContainer"] p {{
-        font-size: 0.95rem !important;
-        color: {base_colors['muted']} !important;
-    }}
-    p, label, .stMarkdown, [data-testid="stWidgetLabel"] p {{
-        color: {base_colors['text']} !important;
-        font-size: 1rem !important;
-    }}
-    [data-testid="stWidgetLabel"] p {{ font-weight: 600 !important; }}
-
-    /* -- Hero -- */
+    /* ---------- Landing hero ---------- */
     .hero {{
-        background: linear-gradient(135deg, {PRIMARY} 0%, {ACCENT} 100%);
-        border-radius: 18px;
-        padding: 2.2rem 2.4rem;
-        color: #ffffff;
-        position: relative;
-        overflow: hidden;
-        box-shadow: 0 12px 32px rgba(13,148,136,0.25);
-        margin-bottom: 1.6rem;
+        position: relative; overflow: hidden;
+        display: flex; align-items: center; justify-content: space-between; gap: 2rem;
+        border: 1px solid {t['border']}; border-radius: 16px; box-shadow: {t['shadow_md']};
+        padding: 2.2rem 2.4rem; margin-bottom: 1.25rem;
+        background:
+            radial-gradient(600px 260px at 100% 0%, {t['hero_glow']}, transparent 70%),
+            linear-gradient(180deg, {t['hero_top']}, {t['surface']});
     }}
-    .hero::after {{
-        content: ""; position: absolute; top: -40%; right: -10%;
-        width: 360px; height: 360px; border-radius: 50%;
-        background: rgba(255,255,255,0.12);
+    .hero-copy {{ max-width: 600px; position: relative; z-index: 1; }}
+    .hero-pill {{
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: {t['primary_soft']}; border: 1px solid {t['primary_soft_border']};
+        border-radius: 999px; padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+        font-size: 0.8rem; font-weight: 500; color: {t['primary_text']};
     }}
-    .hero-badge {{
-        display: inline-block; background: rgba(255,255,255,0.18);
-        padding: 0.3rem 1rem; border-radius: 999px;
-        font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em;
-        margin-bottom: 1rem;
+    .hero-pill b {{
+        background: {t['surface']}; border: 1px solid {t['primary_soft_border']}; border-radius: 999px;
+        padding: 0.05rem 0.55rem; font-weight: 600;
     }}
     .hero-title {{
-        color: #ffffff !important; font-size: 2.5rem !important;
-        margin: 0 0 0.6rem 0 !important; font-weight: 800 !important;
+        font-size: 2.6rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em;
+        color: {t['heading']}; margin: 1rem 0 0.75rem 0;
     }}
-    .hero-sub {{
-        color: rgba(255,255,255,0.92) !important; max-width: 620px;
-        font-size: 1.1rem; line-height: 1.55; margin: 0 0 1.2rem 0;
+    .hero-title span {{
+        background: linear-gradient(90deg, {PRIMARY}, #B692F6);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
     }}
-    .hero-pills {{ display: flex; gap: 0.7rem; flex-wrap: wrap; position: relative; z-index: 2; }}
-    .pill {{
-        background: rgba(255,255,255,0.16); color: #fff !important;
-        padding: 0.5rem 1.1rem; border-radius: 999px; font-size: 0.95rem; font-weight: 600;
+    .hero-sub {{ font-size: 1.05rem !important; line-height: 1.6; color: {t['muted']} !important; margin: 0 0 1.25rem 0; }}
+    .hero-checks {{ display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }}
+    .hero-checks div {{ display: flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; color: {t['text']}; font-weight: 500; }}
+    .hero-checks i {{
+        font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: inline-flex;
+        align-items: center; justify-content: center; font-size: 0.7rem;
+        background: {t['primary_soft']}; color: {t['primary_text']};
     }}
-
-    /* -- Cards -- */
-    .card {{
-        background: {base_colors['card']};
-        border: 1px solid {base_colors['card_border']};
-        border-radius: 16px;
-        padding: 1.5rem 1.6rem;
-        margin-bottom: 1.4rem;
-        box-shadow: 0 4px 16px {base_colors['shadow']};
-    }}
-    .card-head {{ margin-bottom: 1.2rem; }}
-    .card-title {{
-        color: {base_colors['heading']};
-        font-weight: 700; font-size: 1.25rem;
-        display: flex; align-items: center; gap: 0.5rem;
-    }}
-    .card-sub {{
-        color: {base_colors['muted']}; font-size: 0.95rem; margin-top: 0.3rem;
+    .hero-art {{ flex-shrink: 0; }}
+    @media (max-width: 900px) {{
+        .hero {{ padding: 1.5rem; }}
+        .hero-art {{ display: none; }}
+        .hero-title {{ font-size: 2rem; }}
     }}
 
-    /* -- Metrics -- */
-    [data-testid="stMetric"] {{
-        background: {base_colors['card']};
-        border: 1px solid {base_colors['card_border']};
-        border-radius: 14px;
-        padding: 1.2rem 1.4rem;
-        box-shadow: 0 4px 14px {base_colors['shadow']};
+    /* ---------- Feature tiles ---------- */
+    .feat-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }}
+    @media (max-width: 900px) {{ .feat-grid {{ grid-template-columns: 1fr; }} }}
+    .feat {{
+        background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px;
+        box-shadow: {t['shadow']}; padding: 1.25rem;
     }}
-    [data-testid="stMetricValue"] {{ color: {base_colors['heading']} !important; font-size: 2rem !important; }}
-    [data-testid="stMetricDelta"] {{ font-size: 0.95rem !important; }}
-    [data-testid="stMetricLabel"] {{ color: {base_colors['muted']} !important; font-size: 0.95rem !important; }}
+    .feat-ic {{
+        width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        background: {t['primary_soft']}; border: 1px solid {t['primary_soft_border']}; font-size: 1.15rem;
+        margin-bottom: 0.9rem;
+    }}
+    .feat-num {{ font-size: 1.6rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; line-height: 1.2; }}
+    .feat-t {{ font-weight: 600; color: {t['heading']}; font-size: 0.95rem; margin-top: 0.15rem; }}
+    .feat-s {{ font-size: 0.85rem; color: {t['muted']}; margin-top: 0.2rem; line-height: 1.5; }}
 
-    /* -- Inputs (text, number, textarea) -- */
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="textarea"] > div,
-    input, textarea {{
-        background-color: {base_colors['input_bg']} !important;
-        border: 1px solid {base_colors['input_border']} !important;
-        border-radius: 10px !important;
-        color: {base_colors['heading']} !important;
-        font-size: 1rem !important;
-        padding: 0.6rem 0.8rem !important;
+    /* ---------- Empty results state ---------- */
+    .empty {{
+        margin-top: 1.5rem; border: 1px dashed {t['input_border']}; border-radius: 16px;
+        padding: 2.2rem 1.5rem; text-align: center; background: {t['surface']};
     }}
-    div[data-baseweb="input"] {{
-        min-height: 44px !important;
+    .empty-ic {{
+        width: 48px; height: 48px; margin: 0 auto 0.9rem auto; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+        background: {t['primary_soft']}; box-shadow: 0 0 0 8px {t['hero_top']};
     }}
+    .empty-t {{ font-weight: 600; color: {t['heading']}; font-size: 1.05rem; }}
+    .empty-s {{ color: {t['muted']}; font-size: 0.9rem; margin: 0.3rem auto 1.1rem auto; max-width: 460px; }}
+    .steps {{ display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.5rem; }}
+    .step {{
+        display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; font-weight: 500;
+        color: {t['text']}; border: 1px solid {t['border']}; border-radius: 999px;
+        padding: 0.3rem 0.75rem 0.3rem 0.3rem; background: {t['bg']};
+    }}
+    .step b {{
+        width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+        background: {PRIMARY}; color: #fff; font-size: 0.75rem;
+    }}
+    .step-sep {{ color: {t['muted']}; }}
 
-    /* -- Selects (gender, blood group, etc.) -- */
-    .stSelectbox {{
-        color: {base_colors['heading']} !important;
+    /* ---------- Evidence section (landing) ---------- */
+    .ev-card {{
+        background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px;
+        box-shadow: {t['shadow']}; padding: 1.25rem 1.5rem; margin: 1.5rem 0;
     }}
-    div[data-baseweb="select"] > div {{
-        background-color: {base_colors['input_bg']} !important;
-        border: 1px solid {base_colors['input_border']} !important;
-        border-radius: 10px !important;
-        min-height: 44px !important;
-        color: {base_colors['heading']} !important;
-        font-size: 1rem !important;
+    .ev-legend {{ display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: 0.8rem; color: {t['muted']}; margin: 0.6rem 0 0.9rem 0; }}
+    .ev-legend span {{ display: inline-flex; align-items: center; gap: 0.4rem; }}
+    .ev-sw-band, .ev-sw-pop {{ display: inline-block; }}
+    .ev-sw-band {{ width: 18px; height: 8px; border-radius: 4px; background: {PRIMARY}; }}
+    .ev-sw-pop {{ width: 3px; height: 12px; border-radius: 2px; background: {t['heading']}; }}
+    table.ev {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; min-width: 680px; }}
+    table.ev, table.ev th, table.ev td, table.ev tr {{ border-left: none !important; border-right: none !important; border-top: none !important; }}
+    table.ev th {{
+        background: {t['bg']}; color: {t['muted']}; font-weight: 500; font-size: 0.75rem; text-align: left;
+        padding: 0.7rem 1.25rem; border-bottom: 1px solid {t['border']};
     }}
-    /* Force the selected value (and placeholder) text to be clearly visible */
-    div[data-baseweb="select"] > div > div,
-    div[data-baseweb="select"] [data-baseweb="base-input"],
-    div[data-baseweb="select"] [data-baseweb="base-input"] span,
-    div[data-baseweb="select"] div[class*="ValueContainer"],
-    div[data-baseweb="select"] div[class*="ValueContainer"] div,
-    div[data-baseweb="select"] div[class*="ValueContainer"] span,
-    div[data-baseweb="select"] [class*="placeholder"],
-    div[data-baseweb="select"] [class*="singleValue"],
-    div[data-baseweb="select"] [class*="SelectValue"] {{
-        color: {base_colors['heading']} !important;
-        font-size: 1rem !important;
-        opacity: 1 !important;
+    table.ev td {{ padding: 1rem 1.25rem; border-bottom: 1px solid {t['border']}; color: {t['muted']}; vertical-align: top; }}
+    table.ev tr:last-child td {{ border-bottom: none; }}
+    .ev-gene {{ color: {t['heading']}; font-weight: 600; font-size: 0.95rem; }}
+    .ev-syn {{ font-size: 0.8rem; margin-top: 0.15rem; }}
+    .ev-tags {{ display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.55rem; }}
+    .ev-metric {{ margin-bottom: 0.7rem; min-width: 230px; }}
+    .ev-metric:last-child {{ margin-bottom: 0; }}
+    .ev-mhead {{ display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.8rem; margin-bottom: 0.3rem; }}
+    .ev-mhead b {{ color: {t['heading']}; font-weight: 600; }}
+    .ev-track {{ position: relative; height: 8px; border-radius: 999px; background: {t['subtle']}; }}
+    .ev-band {{ position: absolute; top: 0; bottom: 0; border-radius: 999px; background: {PRIMARY}; min-width: 6px; }}
+    .ev-pop {{
+        position: absolute; top: -3px; width: 3px; height: 14px; border-radius: 2px;
+        background: {t['heading']}; box-shadow: 0 0 0 2px {t['surface']};
     }}
+    .ev-freq {{ color: {t['text']}; font-size: 0.85rem; line-height: 1.5; }}
+    .ev-life {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }}
+    @media (max-width: 900px) {{ .ev-life {{ grid-template-columns: 1fr; }} }}
+    .ev-life > div {{ border: 1px solid {t['border']}; border-radius: 12px; padding: 1rem 1.1rem; background: {t['bg']}; }}
+    .ev-life-num {{ font-size: 1.5rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; }}
+    .ev-life-t {{ font-size: 0.875rem; color: {t['text']}; margin-top: 0.15rem; }}
+    .ev-src {{ font-size: 0.75rem; color: {t['muted']}; margin-top: 0.35rem; }}
+    .ev-caution {{
+        margin-top: 1rem; border-radius: 12px; padding: 1rem 1.15rem; border: 1px solid {warn[2]};
+        background: {warn[0]}; color: {t['text']}; font-size: 0.85rem; line-height: 1.6;
+    }}
+    .ev-caution b {{ color: {warn[1]}; }}
+    .ev-caution ul {{ margin: 0.35rem 0 0 1.1rem; padding: 0; }}
+    .ev-caution li {{ margin: 0.15rem 0; font-size: 0.85rem; }}
+    .ev-caution a, .ev-sources a {{ color: {t['primary_text']}; }}
+    .ev-sources {{ font-size: 0.78rem; color: {t['muted']}; margin-top: 0.8rem; line-height: 1.7; }}
+
+    /* ---------- Page header ---------- */
+    .page-head {{ display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.6rem; flex-wrap: wrap; }}
+    .page-title {{ font-size: 1.875rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; line-height: 1.25; margin: 0; }}
+    .page-sub {{ color: {t['muted']}; font-size: 1rem; margin-top: 0.25rem; }}
+
+    /* ---------- Cards (keyed containers) ---------- */
+    div[class*="st-key-card"] {{
+        background: {t['surface']};
+        border: 1px solid {t['border']};
+        border-radius: 12px;
+        box-shadow: {t['shadow']};
+        padding: 1.25rem 1.5rem 1.25rem 1.5rem;
+        gap: 0.75rem;
+    }}
+    .card-h {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }}
+    .card-t {{ font-size: 1.05rem; font-weight: 600; color: {t['heading']}; line-height: 1.5; }}
+    .card-s {{ font-size: 0.875rem; color: {t['muted']}; margin-top: 0.1rem; }}
+    .kebab {{ color: {t['muted']}; font-size: 1.1rem; line-height: 1; letter-spacing: 1px; }}
+
+    /* ---------- KPI tiles ---------- */
+    .kpi {{
+        background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 12px;
+        box-shadow: {t['shadow']}; padding: 1.25rem 1.5rem; height: 100%;
+    }}
+    .kpi-label {{ font-size: 0.875rem; font-weight: 500; color: {t['muted']}; }}
+    .kpi-row {{ display: flex; align-items: flex-end; justify-content: space-between; gap: 0.6rem; margin-top: 0.5rem; flex-wrap: wrap; }}
+    .kpi-value {{ font-size: 2.1rem; font-weight: 600; color: {t['heading']}; letter-spacing: -0.02em; line-height: 1.15; white-space: nowrap; }}
+    .kpi-foot {{ font-size: 0.8rem; color: {t['muted']}; margin-top: 0.4rem; }}
+
+    /* ---------- Badges ---------- */
+    .badge {{
+        display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap;
+        border-radius: 999px; padding: 0.12rem 0.55rem; font-size: 0.75rem; font-weight: 500;
+        border: 1px solid;
+    }}
+    .badge .dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; }}
+    .b-good {{ background: {good[0]}; color: {good[1]}; border-color: {good[2]}; }}
+    .b-warn {{ background: {warn[0]}; color: {warn[1]}; border-color: {warn[2]}; }}
+    .b-bad {{ background: {bad[0]}; color: {bad[1]}; border-color: {bad[2]}; }}
+    .b-neutral {{ background: {neutral[0]}; color: {neutral[1]}; border-color: {neutral[2]}; }}
+    .b-primary {{ background: {t['primary_soft']}; color: {t['primary_text']}; border-color: {t['primary_soft_border']}; }}
+    .b-sq {{ border-radius: 6px; }}
+
+    /* ---------- Data table ---------- */
+    .dt-wrap {{ border: 1px solid {t['border']}; border-radius: 12px; overflow-x: auto; }}
+    table.dt {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; min-width: 640px; }}
+    table.dt, table.dt th, table.dt td, table.dt tr {{ border-left: none !important; border-right: none !important; border-top: none !important; }}
+    table.dt th {{
+        background: {t['bg']}; color: {t['muted']}; font-weight: 500; font-size: 0.75rem;
+        text-align: left; padding: 0.75rem 1.5rem; border-bottom: 1px solid {t['border']};
+    }}
+    table.dt td {{ padding: 0.95rem 1.5rem; border-bottom: 1px solid {t['border']}; color: {t['muted']}; vertical-align: middle; }}
+    table.dt tr:last-child td {{ border-bottom: none; }}
+    .dt-name {{ display: flex; align-items: center; gap: 0.75rem; }}
+    .dt-avatar {{
+        width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 600; font-size: 0.8rem; color: {t['primary_text']};
+        background: {t['primary_soft']}; border: 1px solid {t['primary_soft_border']};
+    }}
+    .dt-avatar.off {{ color: {t['muted']}; background: {t['subtle']}; border-color: {t['border']}; }}
+    .dt-title {{ color: {t['heading']}; font-weight: 500; }}
+    .dt-meter {{ display: flex; align-items: center; gap: 0.75rem; min-width: 180px; }}
+    .dt-track {{ flex: 1; height: 8px; border-radius: 999px; background: {t['subtle']}; overflow: hidden; }}
+    .dt-fill {{ height: 100%; border-radius: 999px; background: {PRIMARY}; }}
+    .dt-num {{ color: {t['heading']}; font-weight: 500; min-width: 2.5rem; text-align: right; }}
+
+    /* ---------- Risk callout ---------- */
+    .callout {{
+        display: flex; gap: 0.85rem; align-items: flex-start;
+        border: 1px solid; border-radius: 12px; padding: 1rem 1.15rem; margin-bottom: 1.25rem;
+    }}
+    .callout .ic {{
+        width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center; font-weight: 700;
+        background: currentColor;
+    }}
+    .callout .ic span {{ color: {t['surface']}; font-size: 1rem; }}
+    .callout .ct {{ font-weight: 600; font-size: 0.95rem; }}
+    .callout .cs {{ font-size: 0.875rem; color: {t['text']}; margin-top: 0.1rem; }}
+    .c-good {{ background: {good[0]}; color: {good[1]}; border-color: {good[2]}; }}
+    .c-warn {{ background: {warn[0]}; color: {warn[1]}; border-color: {warn[2]}; }}
+    .c-bad {{ background: {bad[0]}; color: {bad[1]}; border-color: {bad[2]}; }}
+
+    /* ---------- Hint row inside form tabs ---------- */
+    .hint {{
+        display: flex; gap: 0.6rem; align-items: center; color: {t['muted']};
+        font-size: 0.875rem; margin: 0.2rem 0 0.9rem 0;
+    }}
+    .hint b {{ color: {t['heading']}; font-weight: 600; white-space: nowrap; }}
+    @media (max-width: 640px) {{ .hint {{ flex-direction: column; align-items: flex-start; gap: 0.15rem; }} }}
+
+    /* ---------- Inputs ---------- */
+    [data-testid="stWidgetLabel"] p {{ font-size: 0.875rem !important; font-weight: 500 !important; color: {t['text']} !important; }}
+    div[data-baseweb="input"], div[data-baseweb="textarea"], div[data-baseweb="select"] > div {{
+        background: {t['surface']} !important;
+        border: 1px solid {t['input_border']} !important;
+        border-radius: 8px !important;
+        box-shadow: {t['shadow']};
+        min-height: 44px;
+    }}
+    div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div,
+    div[data-baseweb="input"] input, div[data-baseweb="textarea"] textarea {{
+        background: transparent !important; border: none !important;
+        color: {t['heading']} !important; font-size: 0.95rem !important;
+    }}
+    div[data-baseweb="select"] * {{ color: {t['heading']} !important; }}
+    div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within,
     div[data-baseweb="select"] > div:focus-within {{
-        border-color: {PRIMARY} !important;
-        box-shadow: 0 0 0 2px rgba(13,148,136,0.18) !important;
+        border-color: #D6BBFB !important;
+        box-shadow: 0 0 0 4px rgba(158,119,237,0.24) !important;
     }}
+    input::placeholder, textarea::placeholder {{ color: {t['muted']} !important; opacity: 0.8 !important; }}
+    [data-testid="stNumberInputContainer"], [data-testid="stTextInputRootElement"] {{
+        border-color: {t['input_border']} !important; background: {t['surface']} !important; border-radius: 8px !important;
+    }}
+    [data-testid="stNumberInput"] div[data-baseweb="input"] {{ border: none !important; box-shadow: none !important; }}
+    [data-testid="stNumberInput"] button * {{ color: {t['muted']} !important; fill: {t['muted']} !important; }}
+    [data-testid="stNumberInput"] button {{ background: transparent !important; border: none !important; color: {t['muted']} !important; }}
+    /* Dropdown list (rendered in a floating layer outside the form) */
+    [data-baseweb="popover"] > div, [data-baseweb="popover"] ul,
+    [data-baseweb="menu"], [role="listbox"] {{
+        background: {t['surface']} !important;
+        border-color: {t['input_border']} !important;
+    }}
+    [data-baseweb="popover"] li, [data-baseweb="popover"] li *,
+    [role="listbox"] [role="option"], [role="listbox"] [role="option"] *,
+    [data-baseweb="option"], [data-baseweb="option"] * {{
+        color: {t['heading']} !important;
+        background-color: transparent;
+    }}
+    [data-baseweb="popover"] li:hover, [role="listbox"] [role="option"]:hover,
+    [role="listbox"] [role="option"][aria-selected="true"],
+    [data-baseweb="option"]:hover, [data-baseweb="option"][aria-selected="true"] {{
+        background: {t['subtle']} !important;
+    }}
+    [data-testid="stFileUploaderDropzone"] {{
+        background: {t['surface']} !important; border: 1px dashed {t['input_border']} !important; border-radius: 12px !important;
+    }}
+    [data-testid="stCheckbox"] label p {{ font-size: 0.9rem !important; font-weight: 500 !important; }}
 
-    [data-testid="stNumberInput"] input {{ font-size: 1rem !important; }}
-    .stTextInput input::placeholder, .stTextArea textarea::placeholder {{
-        font-size: 0.95rem !important;
-    }}
-    div[data-baseweb="input"]:focus-within > div,
-    div[data-baseweb="textarea"]:focus-within > div {{
-        border-color: {PRIMARY} !important;
-        box-shadow: 0 0 0 2px rgba(13,148,136,0.18) !important;
-    }}
-    [data-baseweb="popover"] ul, [data-baseweb="menu"] {{
-        background-color: {base_colors['input_bg']} !important;
-    }}
-    [data-baseweb="option"] {{ color: {base_colors['heading']} !important; font-size: 1rem; }}
-    [data-baseweb="option"]:hover {{ background-color: rgba(13,148,136,0.12) !important; color: #fff !important; }}
-
-    /* -- Checkboxes -- */
-    [data-testid="stCheckbox"] label p {{ font-size: 1rem !important; }}
-    [data-testid="stCheckbox"] {{ margin: 0.35rem 0; }}
-
-    /* -- Buttons -- */
-    .stButton, .stDownloadButton {{ margin: 0.4rem 0; }}
+    /* ---------- Buttons ---------- */
     .stButton > button, .stDownloadButton > button {{
-        background: linear-gradient(135deg, {PRIMARY}, {ACCENT}) !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 12px !important;
-        font-weight: 700 !important;
-        font-size: 1.05rem !important;
-        padding: 0.8rem 1.6rem !important;
-        min-height: 52px !important;
-        box-shadow: 0 6px 18px rgba(13,148,136,0.28);
-        transition: transform 0.12s ease, box-shadow 0.12s ease;
+        border-radius: 8px !important; font-weight: 600 !important; font-size: 0.9rem !important;
+        min-height: 42px; padding: 0.5rem 1rem !important; transition: background .12s ease;
+        background: {t['surface']} !important; color: {t['text']} !important;
+        border: 1px solid {t['input_border']} !important; box-shadow: {t['shadow']} !important;
     }}
-    .stButton > button:hover, .stDownloadButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 10px 24px rgba(13,148,136,0.36);
+    .stButton > button:hover, .stDownloadButton > button:hover {{ background: {t['bg']} !important; }}
+    .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {{
+        background: {PRIMARY} !important; color: #fff !important; border-color: {PRIMARY} !important;
     }}
-    .stButton > button[kind="secondary"], .stDownloadButton > button[kind="secondary"] {{
-        background: transparent !important;
-        color: {PRIMARY} !important;
-        border: 1px solid {base_colors['input_border']} !important;
-        box-shadow: none !important;
+    .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {{
+        background: {PRIMARY_DARK} !important;
     }}
-    .stButton > button p, .stDownloadButton > button p {{ font-size: 1.05rem !important; }}
+    .stButton > button[kind="primary"] p, .stDownloadButton > button[kind="primary"] p {{ color: #fff !important; }}
 
-    /* -- Expanders -- */
-    [data-testid="stExpander"] {{
-        background: {base_colors['card']};
-        border: 1px solid {base_colors['card_border']};
-        border-radius: 14px !important;
-        box-shadow: 0 4px 14px {base_colors['shadow']};
-    }}
-    [data-testid="stExpander"] summary span {{ color: {base_colors['heading']} !important; font-weight: 600; font-size: 1.05rem !important; }}
-
-    /* -- Tabs -- */
-    .stTabs [data-baseweb="tab-list"] {{ gap: 0.5rem; }}
+    /* ---------- Tabs ---------- */
+    .stTabs [data-baseweb="tab-list"] {{ gap: 0.25rem; border-bottom: 1px solid {t['border']}; }}
     .stTabs [data-baseweb="tab"] {{
-        background: {base_colors['card']};
-        border-radius: 10px 10px 0 0;
-        padding: 0.7rem 1.4rem;
-        color: {base_colors['muted']} !important;
-        font-size: 1.05rem !important;
-        font-weight: 600;
+        background: transparent; padding: 0.55rem 0.75rem; height: auto;
+        color: {t['muted']} !important; font-weight: 600;
     }}
-    .stTabs [aria-selected="true"] {{ color: {PRIMARY} !important; border-bottom: 3px solid {PRIMARY} !important; }}
+    .stTabs [data-baseweb="tab"] p {{ font-size: 0.9rem !important; }}
+    .stTabs [aria-selected="true"] {{ color: {t['primary_text']} !important; }}
+    .stTabs [aria-selected="true"] p {{ color: {t['primary_text']} !important; }}
+    .stTabs [data-baseweb="tab-highlight"] {{ background: {PRIMARY} !important; height: 2px; }}
+    .stTabs [data-baseweb="tab-border"] {{ display: none; }}
 
-    /* -- Alerts / Badges -- */
-    .risk-banner {{
-        border-radius: 14px; padding: 1.2rem 1.5rem; margin: 0.4rem 0 1.2rem 0;
-        display: flex; align-items: center; gap: 1rem;
-        font-weight: 700; font-size: 1.15rem;
-    }}
-    .risk-banner .rb-icon {{ font-size: 2.1rem; }}
-    .risk-low {{ background: rgba(22,163,74,0.12); color: #16a34a; border: 1px solid rgba(22,163,74,0.3); }}
-    .risk-mid {{ background: rgba(217,119,6,0.12); color: #d97706; border: 1px solid rgba(217,119,6,0.3); }}
-    .risk-high {{ background: rgba(225,29,72,0.12); color: #e11d48; border: 1px solid rgba(225,29,72,0.3); }}
+    /* ---------- Toggle ---------- */
+    [data-testid="stSidebar"] [data-testid="stCheckbox"] {{ padding: 0.3rem 0.75rem; }}
 
-    .tag {{
-        display: inline-block; padding: 0.3rem 0.8rem; border-radius: 8px;
-        font-size: 0.85rem; font-weight: 700;
-    }}
-    .tag-teal {{ background: rgba(13,148,136,0.12); color: {PRIMARY}; }}
-    .tag-gray {{ background: rgba(100,116,139,0.12); color: {base_colors['muted']}; }}
+    /* ---------- AI summary text ---------- */
+    .st-key-card-summary p, .st-key-card-summary li {{ font-size: 0.95rem; line-height: 1.65; color: {t['text']}; }}
 
     .footer-note {{
-        text-align: center; color: {base_colors['muted']} !important;
-        font-size: 0.9rem; margin-top: 2.5rem; padding-top: 1rem;
-        border-top: 1px solid {base_colors['card_border']};
+        text-align: center; color: {t['muted']}; font-size: 0.8rem;
+        margin-top: 2rem; padding-top: 1rem; border-top: 1px solid {t['border']};
     }}
-
-    /* -- Utility -- */
     .stSpinner > div {{ border-top-color: {PRIMARY} !important; }}
-    hr {{ border-color: {base_colors['card_border']} !important; }}
     </style>
     """
-    st.markdown(custom_css, unsafe_allow_html=True)
+    st.markdown(css, unsafe_allow_html=True)
 
 
+# ==========================================
+# LAYOUT PIECES
+# ==========================================
 def sidebar_brand():
-    """Renders the branded sidebar header block."""
     st.markdown(
-        f"""
-        <div class="sidebar-brand">
-            <div class="logo">🧬</div>
-            <div>
-                <div class="name">RiskPredict</div>
-                <div class="tag">Quantum · AI · Clinical</div>
-            </div>
+        """
+        <div class="sb-brand">
+            <div class="sb-logo">🧬</div>
+            <div class="sb-name">RiskPredict</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def sidebar_label(text: str):
+    st.markdown(f'<div class="sb-label">{_esc(text)}</div>', unsafe_allow_html=True)
+
+
+def sidebar_promo():
+    st.markdown(
+        """
+        <div class="sb-promo">
+            <b>How the assessment works</b>
+            <ol>
+                <li>Enter demographics, markers and history.</li>
+                <li>A rule-based score sets the baseline.</li>
+                <li>1,500 Monte Carlo runs estimate the spread.</li>
+                <li>AI turns the numbers into plain guidance.</li>
+            </ol>
+        </div>
+        <div class="sb-foot">Educational estimate only — not a substitute for genetic counseling.</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(title: str, subtitle: str, right_html: str = ""):
+    st.markdown(
+        f"""
+        <div class="page-head">
+            <div>
+                <div class="page-title">{_esc(title)}</div>
+                <div class="page-sub">{_esc(subtitle)}</div>
+            </div>
+            <div>{right_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _helix_svg(width: int = 300, height: int = 190) -> str:
+    """Decorative DNA double helix drawn in the accent purples."""
+    import math
+
+    t = tokens()
+    mid, amp, period = height / 2, height * 0.34, 150.0
+    top, bottom, rungs, dots = [], [], [], []
+    x = 10.0
+    while x <= width - 10:
+        phase = 2 * math.pi * x / period
+        top.append(f"{x:.1f},{mid + amp * math.sin(phase):.1f}")
+        bottom.append(f"{x:.1f},{mid - amp * math.sin(phase):.1f}")
+        x += 2.0
+    for i in range(int((width - 20) / 12) + 1):
+        x = 10 + i * 12
+        phase = 2 * math.pi * x / period
+        y1, y2 = mid + amp * math.sin(phase), mid - amp * math.sin(phase)
+        depth = abs(math.cos(phase))
+        rungs.append(
+            f'<line x1="{x}" y1="{y1:.1f}" x2="{x}" y2="{y2:.1f}" stroke="#9E77ED" '
+            f'stroke-opacity="{0.15 + 0.35 * depth:.2f}" stroke-width="3" stroke-linecap="round"/>'
+        )
+        front = math.cos(phase) > 0
+        near, far = (PRIMARY_DARK, "#B692F6") if front else ("#B692F6", PRIMARY_DARK)
+        dots.append(f'<circle cx="{x}" cy="{y1:.1f}" r="{3.5 if front else 2.5}" fill="{near}"/>')
+        dots.append(f'<circle cx="{x}" cy="{y2:.1f}" r="{2.5 if front else 3.5}" fill="{far}"/>')
+    return (
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" aria-hidden="true">'
+        f'<circle cx="{width * 0.7:.0f}" cy="{mid:.0f}" r="{height * 0.48:.0f}" fill="{t["primary_soft"]}" opacity="0.7"/>'
+        + "".join(rungs)
+        + f'<polyline points="{" ".join(top)}" fill="none" stroke="{PRIMARY}" stroke-width="2.5" stroke-linecap="round"/>'
+        + f'<polyline points="{" ".join(bottom)}" fill="none" stroke="#B692F6" stroke-width="2.5" stroke-linecap="round"/>'
+        + "".join(dots)
+        + "</svg>"
+    )
+
+
+def landing_hero():
+    st.markdown(
+        f"""<div class="hero">
+<div class="hero-copy">
+<div class="hero-pill"><b>New</b>Hybrid quantum-AI risk engine</div>
+<div class="hero-title">Understand hereditary risk <span>in minutes</span></div>
+<p class="hero-sub">Enter a patient's profile and genetic markers. RiskPredict scores the baseline,
+simulates 1,500 outcomes to measure uncertainty, and writes a plain-language clinical summary.</p>
+<div class="hero-checks">
+<div><i>✓</i>BRCA1, BRCA2, APC, TP53</div>
+<div><i>✓</i>90% confidence interval</div>
+<div><i>✓</i>Exportable PDF report</div>
+</div>
+</div>
+<div class="hero-art">{_helix_svg()}</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def feature_tiles():
+    tiles = [
+        ("🧬", "4", "Genetic markers screened", "Hereditary cancer genes weighted into the baseline score."),
+        ("🎲", "1,500", "Monte Carlo simulations", "Each run perturbs the baseline to show how certain the estimate is."),
+        ("🤖", "AI", "Clinical summary", "Results translated into next steps a patient can follow."),
+    ]
+    cells = "".join(
+        f'<div class="feat"><div class="feat-ic">{ic}</div><div class="feat-num">{num}</div>'
+        f'<div class="feat-t">{title}</div><div class="feat-s">{body}</div></div>'
+        for ic, num, title, body in tiles
+    )
+    st.markdown(f'<div class="feat-grid">{cells}</div>', unsafe_allow_html=True)
+
+
+def empty_results():
+    st.markdown(
+        """<div class="empty">
+<div class="empty-ic">📊</div>
+<div class="empty-t">No analysis yet</div>
+<div class="empty-s">Fill in the patient details above and generate an analysis.
+Charts, risk factors and the AI summary will appear here.</div>
+<div class="steps">
+<span class="step"><b>1</b>Demographics</span><span class="step-sep">→</span>
+<span class="step"><b>2</b>Markers &amp; history</span><span class="step-sep">→</span>
+<span class="step"><b>3</b>Generate</span>
+</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+
+# ==========================================
+# REAL-WORLD REFERENCE DATA (landing page)
+# ==========================================
+# Published estimates. Lifetime risk = chance of developing the cancer by about age 70-80.
+# "pop" is the general-population lifetime risk for comparison (US, SEER).
+# Keep ranges as published; studies differ, so never collapse them to one number.
+EVIDENCE = [
+    {
+        "gene": "BRCA1",
+        "syndrome": "Hereditary breast & ovarian cancer",
+        "tags": ["Breast", "Ovarian", "Pancreatic", "Prostate"],
+        # NCI gives one combined breast figure for BRCA1 or BRCA2 carriers ("more than 60%").
+        "metrics": [
+            ("Breast cancer", 60, None, 13),
+            ("Ovarian cancer", 39, 58, 1.1),
+        ],
+        "freq": "About 1 in 400 people carry a harmful BRCA1 or BRCA2 change "
+                "(about 2%, or 1 in 50, of people of Ashkenazi Jewish descent).",
+        "src": "NCI (reviewed July 2024)",
+    },
+    {
+        "gene": "BRCA2",
+        "syndrome": "Hereditary breast & ovarian cancer",
+        "tags": ["Breast", "Ovarian", "Prostate", "Pancreatic", "Male breast"],
+        "metrics": [
+            ("Breast cancer", 60, None, 13),
+            ("Ovarian cancer", 13, 29, 1.1),
+        ],
+        "freq": "Counted together with BRCA1 above. The breast cancer figure is for BRCA1 and BRCA2 carriers combined.",
+        "src": "NCI (reviewed July 2024)",
+    },
+    # APC and TP53 risk figures are the standard GeneReviews statements but could not be
+    # re-checked automatically (NCBI blocks scripted access); confirm them before publishing.
+    {
+        "gene": "APC",
+        "syndrome": "Familial adenomatous polyposis (FAP)",
+        "tags": ["Colorectal", "Duodenal", "Thyroid"],
+        "metrics": [
+            ("Colorectal cancer*", 95, 100, 3.9),
+        ],
+        "freq": "Rare inherited syndrome. *Nearly 100% in classic FAP without preventive surgery.",
+        "src": "GeneReviews",
+    },
+    {
+        "gene": "TP53",
+        "syndrome": "Li-Fraumeni syndrome",
+        "tags": ["Breast", "Sarcoma", "Brain", "Adrenal", "Leukemia"],
+        "metrics": [
+            ("Any cancer", 70, 90, 40),
+        ],
+        "freq": "Rare inherited syndrome. Lifetime risk is at least 70% in men and 90% in women.",
+        "src": "GeneReviews",
+    },
+]
+
+EVIDENCE_SOURCES = [
+    ("NCI — BRCA Gene Changes: Cancer Risk and Genetic Testing",
+     "https://www.cancer.gov/about-cancer/causes-prevention/genetics/brca-fact-sheet"),
+    ("GeneReviews — APC-Associated Polyposis Conditions", "https://www.ncbi.nlm.nih.gov/books/NBK1345/"),
+    ("GeneReviews — Li-Fraumeni Syndrome", "https://www.ncbi.nlm.nih.gov/books/NBK1311/"),
+    ("NCI SEER — Cancer Stat Facts (general-population lifetime risk)", "https://seer.cancer.gov/statfacts/"),
+]
+
+
+def _fmt_pct(v) -> str:
+    return f"{v:g}%"
+
+
+def _evidence_metric(label, lo, hi, pop) -> str:
+    """hi=None means the source gives only a lower bound ("more than lo%")."""
+    if hi is None:
+        risk = f"Over {_fmt_pct(lo)}"
+        band = (f'left:{lo}%;width:{100 - lo}%;'
+                f'background:linear-gradient(90deg, {PRIMARY}, rgba(127,86,217,0))')
+    else:
+        risk = "≈100%" if lo >= 95 else f"{_fmt_pct(lo)}–{_fmt_pct(hi)}"
+        band = f"left:{lo}%;width:{max(hi - lo, 0)}%"
+    return (
+        f'<div class="ev-metric"><div class="ev-mhead"><span>{_esc(label)}</span>'
+        f'<span><b>{risk}</b> vs {_fmt_pct(pop)}</span></div>'
+        f'<div class="ev-track" title="Carriers {risk} · general population {_fmt_pct(pop)}">'
+        f'<div class="ev-band" style="{band}"></div>'
+        f'<div class="ev-pop" style="left:calc({pop}% - 1px)"></div></div></div>'
+    )
+
+
+def evidence_section():
+    rows = []
+    for g in EVIDENCE:
+        tags = "".join(badge(tg, "neutral", square=True) for tg in g["tags"])
+        metrics = "".join(_evidence_metric(*m) for m in g["metrics"])
+        rows.append(
+            f'<tr><td style="width:30%"><div class="ev-gene">{g["gene"]}</div><div class="ev-syn">{_esc(g["syndrome"])}</div>'
+            f'<div class="ev-tags">{tags}</div></td>'
+            f'<td style="width:40%">{metrics}</td>'
+            f'<td><div class="ev-freq">{_esc(g["freq"])}</div><div class="ev-src">Source: {g["src"]}</div></td></tr>'
+        )
+    sources = " · ".join(
+        f'<a href="{url}" target="_blank" rel="noopener">{_esc(name)}</a>' for name, url in EVIDENCE_SOURCES
+    )
+    st.markdown(
+        f"""<div class="ev-card">
+<div class="card-h"><div><div class="card-t">What the research says</div>
+<div class="card-s">Published lifetime cancer risk for people who carry each variant, compared with the general population.</div></div></div>
+<div class="ev-legend"><span><i class="ev-sw-band"></i>Carriers (published range)</span><span><i class="ev-sw-pop"></i>General population</span></div>
+<div class="dt-wrap"><table class="ev">
+<thead><tr><th>Gene &amp; linked cancers</th><th>Lifetime risk: carriers vs everyone</th><th>How common</th></tr></thead>
+<tbody>{''.join(rows)}</tbody>
+</table></div>
+<div class="ev-life">
+<div><div class="ev-life-num">80–90%</div><div class="ev-life-t">of lung cancer deaths in the US are linked to cigarette smoking.</div><div class="ev-src">Source: CDC</div></div>
+<div><div class="ev-life-num">≈ 9 in 10</div><div class="ev-life-t">cancers in the US are diagnosed in people aged 50 or older.</div><div class="ev-src">Source: American Cancer Society</div></div>
+</div>
+<div class="ev-caution"><b>⚠ Read these numbers with care</b>
+<ul>
+<li>They are averages across large groups of carriers, not a prediction for any one person. Family history, the exact variant, sex, age and screening all change individual risk.</li>
+<li>Many carriers never develop cancer, and most cancers happen in people without these variants.</li>
+<li>Prevention works: screening, risk-reducing surgery and medication can lower these risks substantially.</li>
+<li>RiskPredict's scoring uses simplified educational weights; its percentages are not these published figures.</li>
+<li>Genetic results should always be interpreted with a doctor or genetic counselor.</li>
+</ul></div>
+<div class="ev-sources">Sources: {sources}</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def card_header(title: str, subtitle: str = "", right_html: str = '<span class="kebab">⋮</span>'):
+    sub = f'<div class="card-s">{_esc(subtitle)}</div>' if subtitle else ""
+    st.markdown(
+        f"""
+        <div class="card-h">
+            <div><div class="card-t">{_esc(title)}</div>{sub}</div>
+            <div>{right_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def card(key: str):
+    """A white bordered card. Use as `with ui_modules.card("x"):`."""
+    return st.container(key=f"card-{key}")
+
+
+def badge(text: str, kind: str = "neutral", dot: bool = False, square: bool = False) -> str:
+    d = '<span class="dot"></span>' if dot else ""
+    sq = " b-sq" if square else ""
+    return f'<span class="badge b-{kind}{sq}">{d}{_esc(text)}</span>'
+
+
+def hint(title: str, body: str):
+    st.markdown(f'<div class="hint"><b>{_esc(title)}</b><span>{_esc(body)}</span></div>', unsafe_allow_html=True)
+
+
+# Kept for backwards compatibility with older callers.
+def section_header_card(title: str, subtitle: str = ""):
+    card_header(title, subtitle, right_html="")
+
+
+# ==========================================
+# RISK HELPERS
+# ==========================================
+def risk_level(value: float):
+    """Returns (label, badge kind) for a risk percentage."""
+    if value < 20.0:
+        return "Low risk", "good"
+    if value < 50.0:
+        return "Moderate risk", "warn"
+    return "High risk", "bad"
 
 
 def risk_banner(mean_value: float):
-    """Renders a color-coded patient condition banner based on the simulated mean."""
-    if mean_value < 20.0:
-        cls, icon, label, note = "risk-low", "🟢", "PATIENT CONDITION: GOOD", "Low overall disease risk profile"
-    elif mean_value < 50.0:
-        cls, icon, label, note = "risk-mid", "🟠", "PATIENT CONDITION: CONCERNING", "Moderate risk profile identified"
-    else:
-        cls, icon, label, note = "risk-high", "🔴", "PATIENT CONDITION: HIGH RISK", "Action & follow-up highly recommended"
-
+    label, kind = risk_level(mean_value)
+    copy = {
+        "good": ("✓", "Patient condition: good", "Low overall disease risk profile. Continue routine screening."),
+        "warn": ("!", "Patient condition: concerning", "Moderate risk identified. Consider enhanced screening and counseling."),
+        "bad": ("!", "Patient condition: high risk", "Action and specialist follow-up are strongly recommended."),
+    }[kind]
     st.markdown(
         f"""
-        <div class="risk-banner {cls}">
-            <span class="rb-icon">{icon}</span>
-            <span>{label} — <span style="font-weight:600;opacity:.85">{note}</span></span>
+        <div class="callout c-{kind}">
+            <div class="ic"><span>{copy[0]}</span></div>
+            <div><div class="ct">{copy[1]}</div><div class="cs">{copy[2]}</div></div>
         </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def kpi_tiles(base: str, mean: float, ci: tuple, base_val: float):
+    label, kind = risk_level(mean)
+    # "0.4–12.6%" fits on one line; "[0.4%, 12.6%]" wrapped at this font size.
+    ci = f"{ci[0]:g}–{ci[1]:g}%"
+    diff = round(mean - base_val, 1)
+    arrow = "↑" if diff > 0 else ("↓" if diff < 0 else "→")
+    tiles = [
+        ("Baseline risk", base, badge("Rule-based", "neutral"), "Deterministic score from markers & lifestyle"),
+        ("Simulated mean", f"{mean}%", badge(label, kind, dot=True), f"{arrow} {abs(diff)} pts vs baseline"),
+        ("90% confidence interval", ci, badge("1,500 runs", "primary"), "5th – 95th percentile of simulations"),
+    ]
+    cols = st.columns(3)
+    for col, (lbl, val, b, foot) in zip(cols, tiles):
+        col.markdown(
+            f"""
+            <div class="kpi">
+                <div class="kpi-label">{lbl}</div>
+                <div class="kpi-row"><div class="kpi-value">{_esc(val)}</div>{b}</div>
+                <div class="kpi-foot">{_esc(foot)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ==========================================
+# CHARTS
+# ==========================================
+def _distribution_from_figure(risk_plot):
+    """
+    Pulls the per-bin density and per-tier shares out of the heatmap figure
+    produced by quantum_engine.run_simulation (rows: High, Moderate, Low).
+    """
+    trace = risk_plot.data[0]
+    x = [float(v) for v in trace.x]
+    z = [list(row) for row in trace.z]
+    density = [sum(z[r][i] for r in range(len(z))) for i in range(len(x))]
+    high, moderate, low = (round(float(sum(row)), 1) for row in z)
+    return x, density, {"Low <20%": low, "Moderate 20–50%": moderate, "High ≥50%": high}
+
+
+def _base_layout(t, height):
+    return dict(
+        height=height,
+        margin=dict(l=8, r=8, t=8, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", size=14, color=t["muted"]),
+        hoverlabel=dict(bgcolor=t["surface"], bordercolor=t["border"], font=dict(color=t["heading"], size=14)),
+    )
+
+
+def tier_donut(risk_plot):
+    t = tokens()
+    _, _, tiers = _distribution_from_figure(risk_plot)
+    labels = [f"{k}  ·  {v:.0f}%" for k, v in tiers.items()]
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=list(tiers.values()),
+            hole=0.58,
+            sort=False,
+            direction="clockwise",
+            marker=dict(colors=t["seq"], line=dict(color=t["surface"], width=2)),
+            textinfo="none",
+            hovertemplate="%{label}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        **_base_layout(t, 300),
+        showlegend=True,
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.04, yanchor="top",
+                    font=dict(color=t["text"], size=14)),
+    )
+    return fig
+
+
+def distribution_area(risk_plot, mean: float, ci_low: float, ci_high: float):
+    t = tokens()
+    x, density, _ = _distribution_from_figure(risk_plot)
+    fig = go.Figure()
+    fig.add_vrect(x0=ci_low, x1=ci_high, fillcolor=t["band"], line_width=0, layer="below")
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=density,
+            mode="lines",
+            line=dict(color=t["line"], width=2, shape="spline", smoothing=0.8),
+            fill="tozeroy",
+            fillcolor=t["area"],
+            name="Simulated runs",
+            hovertemplate="Risk %{x:.1f}%<br>%{y:.1f}% of runs<extra></extra>",
+        )
+    )
+    fig.add_vline(x=mean, line=dict(color=t["heading"], width=1, dash="dot"))
+    fig.add_annotation(
+        x=mean, y=1, yref="paper", text=f"Mean {mean}%", showarrow=False,
+        yanchor="bottom", font=dict(color=t["heading"], size=13),
+    )
+    fig.update_layout(
+        **_base_layout(t, 250),
+        showlegend=False,
+        hovermode="x unified",
+        xaxis=dict(
+            range=[0, 100], ticksuffix="%", showgrid=False, zeroline=False,
+            linecolor=t["border"], title=dict(text="Predicted risk score", font=dict(size=14)),
+        ),
+        yaxis=dict(
+            ticksuffix="%", gridcolor=t["grid"], zeroline=False,
+            title=dict(text="Share of runs", font=dict(size=14)),
+        ),
+    )
+    fig.update_layout(height=300, margin=dict(l=64, r=16, t=28, b=56))
+    return fig
+
+
+def chart_config():
+    return {"displayModeBar": False}
+
+
+# ==========================================
+# FACTOR TABLE
+# ==========================================
+# Mirrors the weights in quantum_engine.calculate_deterministic_risk.
+MARKERS = [
+    ("BRCA1", "Breast / ovarian cancer", 30.0),
+    ("BRCA2", "Breast / ovarian cancer", 25.0),
+    ("APC", "Colorectal cancer", 20.0),
+    ("TP53", "Li-Fraumeni syndrome", 35.0),
+]
+
+
+def _age_points(age) -> float:
+    try:
+        age = float(age or 0)
+    except (TypeError, ValueError):
+        age = 0
+    return 8.0 if age > 70 else 5.0 if age > 50 else 0.0
+
+
+def factor_rows(patient_data: dict):
+    genetics = patient_data.get("Genetic Markers", {})
+    rows = []
+    for name, condition, weight in MARKERS:
+        present = bool(genetics.get(name))
+        rows.append(dict(
+            code=name, title=name, sub=condition, kind="Genetic marker",
+            points=weight if present else 0.0,
+            status=("Detected", "bad") if present else ("Not detected", "good"),
+        ))
+    for name in patient_data.get("Other Genetic Markers", []):
+        rows.append(dict(
+            code=name, title=name, sub="Added by clinician · not scored", kind="Genetic marker",
+            points=0.0, status=("Reported", "warn"),
+        ))
+    age = patient_data.get("Age")
+    pts = _age_points(age)
+    rows.append(dict(
+        code="AG", title="Age", sub=f"{int(age)} years" if age else "Not provided", kind="Demographic",
+        points=pts, status=("Elevated", "warn") if pts else ("Baseline", "good"),
+    ))
+    smoking = patient_data.get("Smoking History", "Never Smoked")
+    spts = {"Current Smoker": 10.0, "Former Smoker": 3.0}.get(smoking, 0.0)
+    rows.append(dict(
+        code="SM", title="Smoking", sub=smoking, kind="Lifestyle",
+        points=spts, status=("Elevated", "warn") if spts else ("Baseline", "good"),
+    ))
+    return rows
+
+
+def factor_table(patient_data: dict):
+    rows = factor_rows(patient_data)
+    body = []
+    for r in rows:
+        width = min(r["points"] / 35.0 * 100, 100)
+        avatar_cls = "dt-avatar" if r["points"] else "dt-avatar off"
+        body.append(f"""
+            <tr>
+                <td><div class="dt-name"><div class="{avatar_cls}">{_esc(r['code'][:4])}</div>
+                    <div><div class="dt-title">{_esc(r['title'])}</div><div>{_esc(r['sub'])}</div></div></div></td>
+                <td><div class="dt-meter"><div class="dt-track"><div class="dt-fill" style="width:{width:.0f}%"></div></div>
+                    <span class="dt-num">+{r['points']:.0f}</span></div></td>
+                <td>{badge(r['status'][0], r['status'][1], dot=True)}</td>
+                <td>{badge(r['kind'], 'primary', square=True)}</td>
+            </tr>""")
+    st.markdown(
+        f"""
+        <div class="dt-wrap"><table class="dt">
+            <thead><tr><th>Factor</th><th>Risk contribution (pts)</th><th>Status</th><th>Category</th></tr></thead>
+            <tbody>{''.join(body)}</tbody>
+        </table></div>
         """,
         unsafe_allow_html=True,
     )

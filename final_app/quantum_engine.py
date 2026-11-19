@@ -2,23 +2,12 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-
-def _normalize_marker_status(value):
-    """Normalize boolean or string marker states into Positive / Negative / Inconclusive."""
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in {"positive", "pos", "present", "detected", "true", "yes", "1"}:
-            return "Positive"
-        if v in {"negative", "neg", "absent", "not_detected", "normal", "false", "no", "0"}:
-            return "Negative"
-        if v in {"inconclusive", "uncertain", "unknown", "pending", "indeterminate"}:
-            return "Inconclusive"
-        return "Negative"
-
-    if isinstance(value, (bool, np.bool_)):
-        return "Positive" if value else "Negative"
-
-    return "Negative"
+try:
+    # `streamlit run final_app.py` loads the app's modules as top-level modules.
+    from features import normalize_marker_status as _normalize_marker_status
+except ModuleNotFoundError:
+    # Imported as `final_app.quantum_engine` (e.g. from the tests).
+    from .features import normalize_marker_status as _normalize_marker_status
 
 
 def calculate_deterministic_risk(patient_data: dict) -> float:
@@ -41,18 +30,19 @@ def calculate_deterministic_risk(patient_data: dict) -> float:
             base_risk += weight
         elif status == "Inconclusive":
             base_risk += max(weight * 0.12, 2.0)
-
-    age = patient_data.get("Age", 0)
+    # The form sends None when Age is left blank, so fall back to 0.
+    age = patient_data.get("Age") or 0
     if isinstance(age, str):
         try:
             age = float(age)
         except ValueError:
             age = 0
 
-    if age > 50:
-        base_risk += 5.0
-    elif age > 70:
+    # Check the older band first; otherwise "age > 50" swallows every 70+ patient.
+    if age > 70:
         base_risk += 8.0
+    elif age > 50:
+        base_risk += 5.0
 
     smoking_history = patient_data.get("Smoking History", "Never Smoked")
     if smoking_history == "Current Smoker":
@@ -71,10 +61,17 @@ def run_simulation(patient_data: dict, iterations: int = 1500, seed: int | None 
     """
     base_risk = calculate_deterministic_risk(patient_data)
 
+    # Sample from a Beta distribution with mean = baseline and a 4.5-point
+    # standard deviation. Unlike a clipped normal, a Beta stays inside 0-100%
+    # on its own, so low-risk patients don't get a fake pile-up at exactly 0%.
     sigma = 4.5
     rng = np.random.default_rng(seed)
-    simulated_distribution = rng.normal(loc=base_risk, scale=sigma, size=iterations)
-    simulated_distribution = np.clip(simulated_distribution, 0.0, 100.0)
+    m = base_risk / 100.0
+    v = (sigma / 100.0) ** 2
+    concentration = m * (1.0 - m) / v - 1.0
+    simulated_distribution = 100.0 * rng.beta(
+        m * concentration, (1.0 - m) * concentration, size=iterations
+    )
 
     simulated_mean = round(float(np.mean(simulated_distribution)), 1)
     ci_lower = round(float(np.percentile(simulated_distribution, 5)), 1)

@@ -1,3 +1,5 @@
+import re
+
 import streamlit as st
 
 # Import our custom modules
@@ -7,116 +9,177 @@ import quantum_engine
 import ai_synthesizer
 import pdf_builder
 
-# Set up the page layout
 st.set_page_config(
-    page_title="Genetic Disease Risk Prediction",
+    page_title="RiskPredict · Genetic Disease Risk",
     page_icon="🧬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    # "auto" = open on desktop, collapsed on phones (where it would cover the page).
+    initial_sidebar_state="auto",
 )
 
-# ==========================================
-# 1. THEME & SIDEBAR CONTROLS
-# ==========================================
-ui_modules.sidebar_brand()
+RESULTS_KEY = "_analysis_results"
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Theme & Data")
+# ==========================================
+# 1. SIDEBAR
+# ==========================================
+with st.sidebar:
+    ui_modules.sidebar_brand()
 
-# Dark Mode Toggle
-dark_mode = st.sidebar.toggle("🌙 Enable Dark Mode", value=False)
+    ui_modules.sidebar_label("Workspace")
+    if st.button("Clear form", icon=":material/restart_alt:", key="btn-clear-form", width="stretch"):
+        data_manager.clear_form()
+        st.session_state.pop(RESULTS_KEY, None)
+        st.session_state["form_cleared"] = True
+        st.rerun()
+    if st.button("Clear all records", icon=":material/delete:", key="btn-clear-all", width="stretch"):
+        data_manager.clear_session_state()
+        st.session_state["records_cleared"] = True
+        st.rerun()
+
+    ui_modules.sidebar_label("Appearance")
+    dark_mode = st.toggle("Dark mode", value=False, key="dark_mode")
+
+    ui_modules.sidebar_promo()
+
 ui_modules.apply_theme(dark_mode)
-# Clear Form Button (resets only the current patient's entries)
-if st.sidebar.button("🧹 Clear Form", use_container_width=True):
-    data_manager.clear_form()
-    st.session_state["form_cleared"] = True
-    st.rerun()
 
-# Clear Data Button
-if st.sidebar.button("🗑️ Clear All Records", use_container_width=True):
-    data_manager.clear_session_state()
-    st.session_state["records_cleared"] = True
-    st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.caption("RiskPredict · Hybrid Quantum-AI Clinical Decision Support")
-
-# ==========================================
-# 2. MAIN HEADER / HERO
-# ==========================================
 if st.session_state.pop("form_cleared", False):
-    st.toast("🧹 Patient entry form cleared.", icon="✨")
+    st.toast("Patient entry form cleared.", icon="✨")
 if st.session_state.pop("records_cleared", False):
-    st.toast("🗑️ All records cleared.", icon="✨")
+    st.toast("All records cleared.", icon="✨")
 
-st.markdown(ui_modules.brand_html(), unsafe_allow_html=True)
+# ==========================================
+# 2. PAGE HEADER
+# ==========================================
+results = st.session_state.get(RESULTS_KEY)
+header_badge = ""
+if results:
+    label, kind = ui_modules.risk_level(results["mean"])
+    header_badge = ui_modules.badge(label, kind, dot=True)
+
+if results:
+    ui_modules.page_header(
+        "Patient risk overview",
+        "Hybrid Monte Carlo simulation and AI synthesis for hereditary disease risk.",
+        header_badge,
+    )
+else:
+    ui_modules.landing_hero()
+    ui_modules.feature_tiles()
 
 # ==========================================
 # 3. DATA COLLECTION FORM
 # ==========================================
-patient_data = data_manager.render_collection_form()
-
-# ==========================================
-# 4. PROCESSING & DASHBOARD GENERATION
-# ==========================================
-generate_col1, generate_col2, generate_col3 = st.columns([1, 2, 1])
-with generate_col2:
-    run_analysis = st.button(
-        "⚡ Generate Risk Analysis & AI Report", type="primary", use_container_width=True
+with ui_modules.card("form"):
+    ui_modules.card_header(
+        "Patient details",
+        "Enter clinical and demographic details to generate a personalized assessment.",
+        right_html="",
     )
+    patient_data = data_manager.render_collection_form()
 
-if run_analysis:
+    _, btn_col = st.columns([3, 1.3])
+    with btn_col:
+        run_analysis = st.button("Generate risk analysis", type="primary", width="stretch")
 
-    with st.spinner("Initializing Quantum Simulation & AI Synthesis..."):
+    problems = data_manager.validate_patient(patient_data) if run_analysis else []
+    if problems:
+        st.error(
+            "**Please fix the following before generating the analysis:**\n\n"
+            + "\n".join(f"- {p}" for p in problems),
+            icon=":material/error:",
+        )
 
-        # Step A: Run the math models
+# ==========================================
+# 4. PROCESSING
+# ==========================================
+if run_analysis and not problems:
+    with st.spinner("Running simulation and generating AI summary…"):
         risk_table, risk_plot = quantum_engine.run_simulation(patient_data)
-
-        # Step B: Generate the simplified text via Gemini
         ai_summary = ai_synthesizer.generate_report(patient_data, risk_table)
-
-        # Step C: Render the Dashboard
-        st.markdown("---")
-        st.header("📊 Clinical Risk Dashboard")
-        st.caption("Comprehensive patient risk profile, simulation results, and clinical guidance.")
-
-        # --- PATIENT STATUS CONDITION BANNER ---
-        simulated_mean_str = risk_table["Simulated Mean"].iloc[0]
-        simulated_mean_val = float(simulated_mean_str.replace("%", ""))
-        ui_modules.risk_banner(simulated_mean_val)
-
-        # --- KEY METRICS CARDS ---
-        base_str = risk_table["Base Deterministic Risk"].iloc[0]
-        ci_str = risk_table["90% Confidence Interval"].iloc[0]
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Base Deterministic Risk", base_str)
-        m2.metric("Simulated Quantum Mean", f"{simulated_mean_val}%", delta="est.")
-        m3.metric("90% Confidence Interval", ci_str)
-
-        col1, col2 = st.columns([1, 1.2], gap="large")
-
-        with col1:
-            st.markdown("**Risk Distribution**")
-            st.plotly_chart(risk_plot, use_container_width=True)
-
-        with col2:
-            st.markdown("**AI-Generated Clinical Summary**")
-            st.write(ai_summary)
-
-        # --- PDF DOWNLOAD ---
-        st.markdown("---")
-        st.subheader("📄 Export Report")
         pdf_bytes = pdf_builder.generate_pdf(patient_data, risk_table, ai_summary)
-        st.download_button(
-            label="⬇️ Download Complete PDF Report",
-            data=pdf_bytes,
-            file_name=f"Risk_Report_{patient_data.get('Name', 'Patient')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
 
-        st.markdown(
-            '<div class="footer-note">This tool provides an educational risk estimate and does '
-            'not replace professional genetic counseling or clinical diagnosis.</div>',
-            unsafe_allow_html=True,
+    row = risk_table.iloc[0]
+    ci_bounds = [float(v) for v in re.findall(r"[\d.]+", row["90% Confidence Interval"])]
+    st.session_state[RESULTS_KEY] = {
+        "patient": patient_data,
+        "plot": risk_plot,
+        "summary": ai_summary,
+        "pdf": pdf_bytes,
+        "base_str": row["Base Deterministic Risk"],
+        "base": float(row["Base Deterministic Risk"].rstrip("%")),
+        "mean": float(row["Simulated Mean"].rstrip("%")),
+        "ci_str": row["90% Confidence Interval"],
+        "ci": (ci_bounds[0], ci_bounds[1]),
+    }
+    st.rerun()
+
+# ==========================================
+# 5. DASHBOARD
+# ==========================================
+if not results:
+    ui_modules.empty_results()
+    ui_modules.evidence_section()
+else:
+    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+    ui_modules.risk_banner(results["mean"])
+    ui_modules.kpi_tiles(results["base_str"], results["mean"], results["ci"], results["base"])
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+
+    left, right = st.columns([1, 1.6], gap="medium")
+    with left:
+        with ui_modules.card("donut"):
+            ui_modules.card_header("Risk tier breakdown", "Share of simulation runs in each tier")
+            st.plotly_chart(
+                ui_modules.tier_donut(results["plot"]),
+                width="stretch",
+                config=ui_modules.chart_config(),
+                theme=None,
+            )
+    with right:
+        with ui_modules.card("dist"):
+            ui_modules.card_header(
+                "Simulated risk distribution",
+                "Spread of 1,500 Monte Carlo runs. Shaded band is the 90% interval.",
+            )
+            st.plotly_chart(
+                ui_modules.distribution_area(results["plot"], results["mean"], *results["ci"]),
+                width="stretch",
+                config=ui_modules.chart_config(),
+                theme=None,
+            )
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    with ui_modules.card("factors"):
+        ui_modules.card_header(
+            "Risk factors",
+            "What contributes to this patient's baseline score.",
+            right_html="",
         )
+        ui_modules.factor_table(results["patient"])
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    with ui_modules.card("summary"):
+        head_col, btn_col = st.columns([3, 1])
+        with head_col:
+            ui_modules.card_header(
+                "AI clinical summary",
+                "Plain-language interpretation of the results.",
+                right_html="",
+            )
+        with btn_col:
+            st.download_button(
+                label="⬇  Export PDF",
+                data=results["pdf"],
+                file_name=f"Risk_Report_{results['patient'].get('Name') or 'Patient'}.pdf",
+                mime="application/pdf",
+                width="stretch",
+                on_click="ignore",
+            )
+        st.markdown(results["summary"])
+
+    st.markdown(
+        '<div class="footer-note">This tool provides an educational risk estimate and does '
+        "not replace professional genetic counseling or clinical diagnosis.</div>",
+        unsafe_allow_html=True,
+    )

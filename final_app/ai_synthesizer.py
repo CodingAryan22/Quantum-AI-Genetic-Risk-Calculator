@@ -43,6 +43,12 @@ def generate_report(patient_data: dict, risk_table) -> str:
     if "TP53" in positive_markers:
         marker_descriptions.append("TP53 (Associated with Li-Fraumeni Syndrome and multiple multi-organ cancer risks)")
     
+    for marker in patient_data.get("Other Genetic Markers", []):
+        marker_descriptions.append(
+            f"{marker} (reported by the clinician; not included in the numeric risk score - "
+            "explain its general significance if it is a recognised gene)"
+        )
+
     markers_text = "\n".join([f"- {desc}" for desc in marker_descriptions]) if marker_descriptions else "No high-risk targeted gene mutations detected."
 
     # Classify Risk Level for Prompt Context
