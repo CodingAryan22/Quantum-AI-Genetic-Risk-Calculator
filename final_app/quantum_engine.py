@@ -161,7 +161,7 @@ def run_simulation(patient_data: dict, iterations: int = 1500, seed: int | None 
     )
 
     fig.update_layout(
-        title="<b>Quantum Monte Carlo Simulation (2D Risk Matrix Heatmap)</b>",
+        title="<b>Monte Carlo Uncertainty Simulation (2D Risk Matrix Heatmap)</b>",
         xaxis=dict(
             title="Predicted Risk Score (%) Bins",
             ticksuffix="%",

@@ -1487,7 +1487,7 @@ def headline_card(mean: float, ci_low: float, ci_high: float, model_preds: dict 
     st.markdown(
         f"""<div class="hl">
             <div class="hl-left">
-                <div class="kpi-label">Estimated risk</div>
+                <div class="kpi-label">Estimated risk (rule-based)</div>
                 <div class="hl-num">{mean:.0f}<span>%</span></div>
                 {badge(label, kind, dot=True)}
             </div>
@@ -1502,8 +1502,8 @@ def headline_card(mean: float, ci_low: float, ci_high: float, model_preds: dict 
                 </div>
                 <div class="hl-ticks"><span style="left:0">0%</span><span style="left:20%">20%</span>
                     <span style="left:50%">50%</span><span style="left:100%">100%</span></div>
-                <div class="hl-note">Rule-based score with 1,500 Monte Carlo runs; the range is the
-                    middle 90% of runs.{models_line}</div>
+                <div class="hl-note">Rule-based estimate (no time frame), with 1,500 Monte Carlo
+                    runs; the range is the middle 90% of runs.{models_line}</div>
             </div>
         </div>""",
         unsafe_allow_html=True,
