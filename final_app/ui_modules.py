@@ -478,6 +478,28 @@ def apply_theme(is_dark_mode: bool = False):
         background: {PRIMARY_DARK} !important;
     }}
     .stButton > button[kind="primary"] p, .stDownloadButton > button[kind="primary"] p {{ color: #fff !important; }}
+    /* Secondary buttons, download buttons and popover buttons follow the theme
+       (Streamlit's light base theme otherwise paints them white). */
+    [data-testid="stBaseButton-secondary"], [data-testid="stPopoverButton"] {{
+        background: {t['surface']} !important; border: 1px solid {t['input_border']} !important;
+        color: {t['text']} !important;
+    }}
+    [data-testid="stBaseButton-secondary"] p, [data-testid="stBaseButton-secondary"] span,
+    [data-testid="stPopoverButton"] p, [data-testid="stPopoverButton"] span {{ color: {t['text']} !important; }}
+    [data-testid="stBaseButton-secondary"]:hover, [data-testid="stPopoverButton"]:hover {{
+        background: {t['subtle']} !important; border-color: {t['line']} !important;
+    }}
+    [data-testid="stPopoverBody"] {{
+        background: {t['surface']} !important; border: 1px solid {t['input_border']} !important;
+    }}
+    [data-testid="stPopoverBody"] p {{ color: {t['text']} !important; }}
+    /* Expanders (e.g. "Latest AI clinical summary"). */
+    [data-testid="stExpander"] details {{
+        background: {t['surface']} !important; border: 1px solid {t['border']} !important; border-radius: 10px !important;
+    }}
+    [data-testid="stExpander"] summary p, [data-testid="stExpander"] summary span,
+    [data-testid="stExpander"] [data-testid="stIconMaterial"] {{ color: {t['text']} !important; }}
+    [data-testid="stExpander"] summary:hover p {{ color: {t['primary_text']} !important; }}
     /* Segmented controls (e.g. the tier filter on Patient records) follow the theme. */
     [data-testid="stBaseButton-segmented_control"] {{
         background: {t['surface']} !important; border-color: {t['input_border']} !important;

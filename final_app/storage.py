@@ -205,3 +205,64 @@ def connect():
         return MongoStore(uri, db_name), None
     except Exception as exc:  # pymongo missing, server down, bad URI, auth failure...
         return LocalStore(), f"{type(exc).__name__}: {str(exc)[:160]}"
+
+
+# Column order for spreadsheet exports.
+EXPORT_COLUMNS = [
+    "Patient", "Assessed at", "Age", "Gender", "Height (cm)", "Weight (kg)", "Blood group",
+    "Ancestry", "Smoking", "Mutations", "Other mutations", "1st-degree relatives",
+    "2nd-degree relatives", "Linked diseases", "Baseline score (%)", "Estimated risk (%)",
+    "Range low (%)", "Range high (%)", "Tier", "Logistic regression (%)", "Random forest (%)",
+    "Quantum kernel SVM (%)", "Notes", "AI summary",
+]
+
+
+def records_to_csv(records: list[dict]) -> bytes:
+    """
+    One row per assessment, newest first. UTF-8 with a byte-order mark so Excel
+    opens names and symbols correctly.
+    """
+    import csv
+    import io
+
+    def pct(v):
+        return "" if v is None else round(v * 100, 1)
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=EXPORT_COLUMNS)
+    writer.writeheader()
+    for r in sorted(records, key=lambda r: r["created_at"], reverse=True):
+        p, res = r["patient"], r["result"]
+        fam, models = p.get("family_history") or {}, res.get("models") or {}
+        writer.writerow({
+            "Patient": p.get("name"),
+            "Assessed at": r["created_at"].astimezone().strftime("%Y-%m-%d %H:%M"),
+            "Age": p.get("age"),
+            "Gender": p.get("gender"),
+            "Height (cm)": p.get("height_cm"),
+            "Weight (kg)": p.get("weight_kg"),
+            "Blood group": p.get("blood_group"),
+            "Ancestry": p.get("ancestry"),
+            "Smoking": p.get("smoking"),
+            "Mutations": ", ".join(p.get("markers") or []),
+            "Other mutations": ", ".join(p.get("other_markers") or []),
+            "1st-degree relatives": fam.get("First-degree", 0),
+            "2nd-degree relatives": fam.get("Second-degree", 0),
+            "Linked diseases": "; ".join(r.get("diseases") or []),
+            "Baseline score (%)": res.get("baseline"),
+            "Estimated risk (%)": res.get("mean"),
+            "Range low (%)": res.get("ci_low"),
+            "Range high (%)": res.get("ci_high"),
+            "Tier": res.get("tier"),
+            "Logistic regression (%)": pct(models.get("Logistic regression")),
+            "Random forest (%)": pct(models.get("Random forest")),
+            "Quantum kernel SVM (%)": pct(models.get("Quantum kernel SVM")),
+            "Notes": p.get("notes", ""),
+            "AI summary": r.get("summary", ""),
+        })
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def safe_filename(name: str) -> str:
+    """'Jane O'Neil' -> 'Jane_ONeil' for download file names."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "", re.sub(r"\s+", "_", (name or "patient").strip())) or "patient"

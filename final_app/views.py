@@ -11,6 +11,7 @@ selected one; each page is a plain function.
 """
 
 import re
+from datetime import datetime
 
 import streamlit as st
 
@@ -268,13 +269,22 @@ def patient_records():
     ui_modules.records_stats(patients)
     _gap(1)
 
-    search_col, tier_col = st.columns([1.6, 1.4], vertical_alignment="bottom")
+    search_col, tier_col, export_col = st.columns([1.5, 1.3, 1], vertical_alignment="bottom")
     with search_col:
         query = st.text_input("Search", placeholder="Search by name, mutation or disease",
                               key="records-search", label_visibility="collapsed")
     with tier_col:
         tier = st.segmented_control("Tier", ["All", "Low", "Moderate", "High"], default="All",
                                     key="records-tier", label_visibility="collapsed")
+    with export_col:
+        all_records = [r for p in patients for r in p["history"]]
+        st.download_button(
+            "Export all (CSV)", icon=":material/download:",
+            data=storage.records_to_csv(all_records),
+            file_name=f"riskpredict_all_patients_{datetime.now():%Y%m%d}.csv",
+            mime="text/csv", width="stretch", on_click="ignore", key="export-all",
+            help=f"Every saved assessment for all {len(patients)} patients, one row per assessment.",
+        )
     q = (query or "").strip().lower()
     shown = [
         p for p in patients
@@ -322,13 +332,33 @@ def patient_records():
             with st.expander("Clinical notes"):
                 st.write(latest["patient"]["notes"])
 
-        with st.popover("Delete this patient's records", icon=":material/delete:"):
-            st.write(f"This permanently deletes all {p['assessments']} saved assessments for "
-                     f"**{p['name']}**. It cannot be undone.")
-            if st.button("Yes, delete permanently", type="primary", key=f"del-{key}"):
-                removed = store.delete_patient(key)
-                st.toast(f"Deleted {removed} record(s) for {p['name']}.", icon="🗑️")
-                st.rerun()
+        _gap(0.25)
+        fname = storage.safe_filename(p["name"])
+        pdf_col, csv_col, del_col = st.columns([1, 1, 1.3])
+        with pdf_col:
+            st.download_button(
+                "Download PDF", icon=":material/picture_as_pdf:", type="primary",
+                data=pdf_builder.generate_patient_history_pdf(p),
+                file_name=f"{fname}_history.pdf", mime="application/pdf",
+                width="stretch", on_click="ignore", key=f"pdf-{key}",
+                help="Patient details, linked diseases, every assessment and the latest AI summary.",
+            )
+        with csv_col:
+            st.download_button(
+                "Download CSV", icon=":material/table:",
+                data=storage.records_to_csv(p["history"]),
+                file_name=f"{fname}_history.csv", mime="text/csv",
+                width="stretch", on_click="ignore", key=f"csv-{key}",
+                help="This patient's assessments as a spreadsheet, one row per assessment.",
+            )
+        with del_col:
+            with st.popover("Delete records", icon=":material/delete:", width="stretch"):
+                st.write(f"This permanently deletes all {p['assessments']} saved assessments for "
+                         f"**{p['name']}**. It cannot be undone.")
+                if st.button("Yes, delete permanently", type="primary", key=f"del-{key}"):
+                    removed = store.delete_patient(key)
+                    st.toast(f"Deleted {removed} record(s) for {p['name']}.", icon="🗑️")
+                    st.rerun()
 
     ui_modules.footer_note()
 

@@ -85,3 +85,34 @@ def test_mongo_store_round_trip(mongo_store):
     patients = storage.group_patients(records)
     assert patients[0]["assessments"] == 2
     assert mongo_store.delete_patient("jane smith") == 2
+
+
+# ---------- downloads ----------
+
+def test_csv_export_has_one_row_per_assessment_newest_first():
+    import csv
+    import io
+
+    now = datetime.now(timezone.utc)
+    records = [_record("Jane Smith", 30, now - timedelta(days=1)), _record("Raj Mehta", 55, now)]
+    text = storage.records_to_csv(records).decode("utf-8-sig")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert list(rows[0]) == storage.EXPORT_COLUMNS
+    assert [r["Patient"] for r in rows] == ["Raj Mehta", "Jane Smith"]
+    assert rows[0]["Mutations"] == "BRCA1" and rows[0]["Random forest (%)"] == "47.0"
+    assert rows[0]["Linked diseases"] == "Breast cancer; Ovarian cancer"
+
+
+def test_safe_filename():
+    assert storage.safe_filename("Jane O'Neil Smith") == "Jane_ONeil_Smith"
+    assert storage.safe_filename("  ") == "patient"
+
+
+def test_patient_history_pdf_is_a_valid_pdf():
+    import pdf_builder
+
+    now = datetime.now(timezone.utc)
+    patient = storage.group_patients([_record("Jane Smith", 30, now - timedelta(days=1)),
+                                      _record("Jane Smith", 55, now)])[0]
+    pdf = pdf_builder.generate_patient_history_pdf(patient)
+    assert pdf.startswith(b"%PDF") and len(pdf) > 1500

@@ -149,3 +149,74 @@ def generate_pdf(patient_data: dict, risk_table: pd.DataFrame, ai_summary: str,
         
     os.remove(tmp_path)
     return pdf_bytes
+
+def generate_patient_history_pdf(patient: dict) -> bytes:
+    """
+    One patient's saved record: details, linked diseases, every assessment
+    (newest first) and the latest AI summary. `patient` is one entry from
+    storage.group_patients().
+    """
+    history = patient["history"]
+    latest = history[0]
+    info = latest["patient"]
+
+    pdf = PDF()
+    pdf.add_page()
+
+    _section(pdf, ' 1. Patient Details')
+    fam = info.get("family_history") or {}
+    lines = [
+        f"Name: {info.get('name')}   |   Age: {info.get('age')}   |   Gender: {info.get('gender')}",
+        f"Height: {info.get('height_cm')} cm   |   Weight: {info.get('weight_kg')} kg   |   "
+        f"Blood group: {info.get('blood_group')}",
+        f"Ancestry: {info.get('ancestry')}   |   Smoking: {info.get('smoking')}",
+        f"Relatives with cancer: {fam.get('First-degree', 0)} first-degree, "
+        f"{fam.get('Second-degree', 0)} second-degree",
+    ]
+    for line in lines:
+        pdf.cell(0, 7, _pdf_text(line), 0, 1)
+    pdf.ln(4)
+
+    _section(pdf, ' 2. Mutations & Linked Diseases')
+    markers = (info.get("markers") or []) + (info.get("other_markers") or [])
+    pdf.cell(0, 7, _pdf_text("Mutations: " + (", ".join(markers) or "None reported")), 0, 1)
+    diseases = patient.get("diseases") or []
+    pdf.multi_cell(0, 6, _pdf_text("Linked diseases: " + ("; ".join(diseases) or "None")))
+    pdf.ln(4)
+
+    _section(pdf, f' 3. Assessment History ({len(history)})')
+    widths = [42, 26, 30, 28, 64]
+    headers = ["Date", "Risk", "90% range", "Tier", "ML models (20-yr): LR / RF / QK"]
+    pdf.set_font('Arial', 'B', 9)
+    pdf.set_fill_color(*BRAND_FILL)
+    for w, h in zip(widths, headers):
+        pdf.cell(w, 7, h, 1, 0, 'L', fill=True)
+    pdf.ln()
+    pdf.set_font('Arial', '', 9)
+    for r in history:
+        res, models = r["result"], r["result"].get("models") or {}
+        model_txt = " / ".join(
+            f"{models[k] * 100:.0f}%" for k in ("Logistic regression", "Random forest", "Quantum kernel SVM")
+            if k in models
+        ) or "-"
+        row = [
+            r["created_at"].astimezone().strftime("%d %b %Y %H:%M"),
+            f"{res['mean']:.0f}%",
+            f"{res['ci_low']:.0f}-{res['ci_high']:.0f}%",
+            res.get("tier", ""),
+            model_txt,
+        ]
+        for w, v in zip(widths, row):
+            pdf.cell(w, 7, _pdf_text(v), 1, 0, 'L')
+        pdf.ln()
+    pdf.ln(5)
+
+    if latest.get("summary"):
+        _section(pdf, ' 4. Latest AI-Generated Clinical Summary')
+        pdf.multi_cell(0, 6, _pdf_text(_strip_markdown(latest["summary"])))
+        pdf.ln(3)
+
+    pdf.set_font('Arial', 'I', 8)
+    pdf.multi_cell(0, 5, "Educational estimate only. Models were trained on simulated (synthetic) "
+                         "patients; this is not a medical diagnosis.")
+    return bytes(pdf.output())
