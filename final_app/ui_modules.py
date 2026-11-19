@@ -429,6 +429,19 @@ def apply_theme(is_dark_mode: bool = False):
     [data-baseweb="option"]:hover, [data-baseweb="option"][aria-selected="true"] {{
         background: {t['subtle']} !important;
     }}
+    /* Help tooltips (the "?" next to a label). Streamlit paints them with the
+       light base theme, so set both background and text from our tokens. */
+    [data-baseweb="tooltip"] > div {{
+        background: {t['surface']} !important;
+        border: 1px solid {t['input_border']} !important;
+        border-radius: 8px !important;
+        box-shadow: {t['shadow_md']} !important;
+    }}
+    [data-baseweb="tooltip"] [data-testid="stTooltipContent"],
+    [data-baseweb="tooltip"] [data-testid="stTooltipContent"] * {{
+        background: transparent !important;
+        color: {t['heading']} !important;
+    }}
     [data-testid="stFileUploaderDropzone"] {{
         background: {t['surface']} !important; border: 1px dashed {t['input_border']} !important; border-radius: 12px !important;
     }}
