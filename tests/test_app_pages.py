@@ -149,3 +149,13 @@ def test_export_all_offers_csv_and_pdf():
     at = _page("patient_records")
     labels = [d.proto.label for d in at.get("download_button")]
     assert "CSV spreadsheet" in labels and "PDF report" in labels
+
+
+def test_results_page_runs_a_queued_analysis_and_saves_it():
+    at = _page("results", {views.PENDING_KEY: PATIENT})
+    assert not at.exception, at.exception
+    assert views.PENDING_KEY not in at.session_state
+    assert at.session_state[views.RESULTS_KEY]["summary"] == "Test summary."
+    assert [t.label for t in at.tabs] == ["Overview", "Models", "Details"]
+    store, _ = views.get_store()
+    assert [r["patient"]["name"] for r in store.all_records()] == ["Test Patient"]

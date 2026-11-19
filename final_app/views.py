@@ -25,6 +25,7 @@ from ml import predictor, synthetic_data
 from ml.schema import MARKERS, patient_to_vector
 
 RESULTS_KEY = "_analysis_results"
+PENDING_KEY = "_pending_patient"  # set by Generate; Results runs the analysis
 
 
 # ==========================================
@@ -53,15 +54,23 @@ def reference_risk(patient_data: dict) -> float:
     )
 
 
-def run_analysis(patient_data: dict) -> dict:
-    """Runs every model and the AI summary for one patient; returns the results dict."""
+def run_analysis(patient_data: dict, on_step=None) -> dict:
+    """
+    Runs every model and the AI summary for one patient; returns the results dict.
+    `on_step(label)` is called before each stage so the page can show progress.
+    """
+    step = on_step or (lambda label: None)
     models = get_models()
+    step("Running the rule-based score and 1,500 Monte Carlo simulations")
     risk_table, risk_plot = quantum_engine.run_simulation(patient_data)
     model_preds, explanation = None, None
     if models:
+        step("Scoring with logistic regression, random forest and the quantum model")
         model_preds = predictor.predict_all(models, patient_data)
         explanation = predictor.explain(models, patient_data)
+    step("Writing the AI clinical summary (this can take a few seconds)")
     ai_summary = ai_synthesizer.generate_report(patient_data, risk_table, model_preds)
+    step("Building the PDF report")
     pdf_bytes = pdf_builder.generate_pdf(patient_data, risk_table, ai_summary, model_preds)
 
     row = risk_table.iloc[0]
@@ -139,15 +148,33 @@ def new_assessment():
         patient_data, generate = data_manager.render_collection_form()
 
     # Generate is disabled until every step is valid; check again to be safe.
+    # Go to Results straight away; the analysis runs there with visible progress.
     if generate and not data_manager.validate_patient(patient_data):
-        with st.spinner("Running the models and writing the AI summary…"):
-            results = run_analysis(patient_data)
-            st.session_state[RESULTS_KEY] = results
-            save_assessment(patient_data, results)
+        st.session_state[PENDING_KEY] = patient_data
+        st.session_state.pop(RESULTS_KEY, None)  # don't show the previous patient meanwhile
         st.switch_page(pages()["results"])
 
 
+def _run_pending_analysis():
+    """Runs the analysis queued by Generate, showing each step as it happens."""
+    patient = st.session_state[PENDING_KEY]
+    ui_modules.page_header(
+        "Results", f"Building the risk assessment for {patient.get('Name') or 'the patient'}…")
+    with st.status("Analysing the patient…", expanded=True) as status:
+        results = run_analysis(patient, on_step=status.write)
+        status.write("Saving to patient records")
+        save_assessment(patient, results)
+        status.update(label="Analysis complete", state="complete")
+    st.session_state[RESULTS_KEY] = results
+    # Cleared only after success, so leaving mid-way and coming back runs it again.
+    st.session_state.pop(PENDING_KEY, None)
+    st.rerun()
+
+
 def results():
+    if PENDING_KEY in st.session_state:
+        _run_pending_analysis()
+        return
     res = st.session_state.get(RESULTS_KEY)
     if not res:
         ui_modules.page_header("Results", "The latest assessment appears here.")
