@@ -9,6 +9,8 @@ import html
 import plotly.graph_objects as go
 import streamlit as st
 
+import quantum_engine
+
 # ==========================================
 # DESIGN TOKENS
 # ==========================================
@@ -347,6 +349,15 @@ def apply_theme(is_dark_mode: bool = False):
     .dt-meter {{ display: flex; align-items: center; gap: 0.75rem; min-width: 180px; }}
     .dt-track {{ flex: 1; height: 8px; border-radius: 999px; background: {t['subtle']}; overflow: hidden; }}
     .dt-fill {{ height: 100%; border-radius: 999px; background: {PRIMARY}; }}
+    table.dt-compact {{ min-width: 0 !important; }}
+    table.dt-compact th, table.dt-compact td {{ padding: 0.7rem 0.6rem !important; }}
+    table.dt-compact th:first-child, table.dt-compact td:first-child {{ padding-left: 1rem !important; }}
+    table.dt-compact .dt-meter {{ min-width: 70px; gap: 0.5rem; }}
+    table.dt-compact .dt-track {{ min-width: 48px; }}
+    table.dt-compact .dt-title {{ white-space: nowrap; }}
+    table.dt-compact .dt-sub {{ font-size: 0.78rem; }}
+    table.dt-compact td:last-child {{ white-space: nowrap; }}
+    table.dt-compact th {{ white-space: nowrap; }}
     .dt-num {{ color: {t['heading']}; font-weight: 500; min-width: 2.5rem; text-align: right; }}
 
     /* ---------- Risk callout ---------- */
@@ -492,10 +503,10 @@ def sidebar_promo():
         <div class="sb-promo">
             <b>How the assessment works</b>
             <ol>
-                <li>Enter demographics, markers and history.</li>
-                <li>A rule-based score sets the baseline.</li>
-                <li>1,500 Monte Carlo runs estimate the spread.</li>
-                <li>AI turns the numbers into plain guidance.</li>
+                <li>Enter demographics, markers and family history.</li>
+                <li>A rule-based score sets the baseline; 1,500 Monte Carlo runs estimate the spread.</li>
+                <li>Classical and quantum ML models predict 20-year risk and explain it.</li>
+                <li>AI turns the de-identified numbers into plain guidance.</li>
             </ol>
         </div>
         <div class="sb-foot">Educational estimate only — not a substitute for genetic counseling.</div>
@@ -562,12 +573,13 @@ def landing_hero():
 <div class="hero-copy">
 <div class="hero-pill"><b>New</b>Hybrid quantum-AI risk engine</div>
 <div class="hero-title">Understand hereditary risk <span>in minutes</span></div>
-<p class="hero-sub">Enter a patient's profile and genetic markers. RiskPredict scores the baseline,
-simulates 1,500 outcomes to measure uncertainty, and writes a plain-language clinical summary.</p>
+<p class="hero-sub">Enter a patient's profile, genetic markers and family history. RiskPredict compares
+a rule-based score with classical and quantum machine-learning models, explains what drives the risk,
+and writes a plain-language clinical summary.</p>
 <div class="hero-checks">
 <div><i>✓</i>BRCA1, BRCA2, APC, TP53</div>
-<div><i>✓</i>90% confidence interval</div>
-<div><i>✓</i>Exportable PDF report</div>
+<div><i>✓</i>9-qubit quantum kernel model</div>
+<div><i>✓</i>Explainable, exportable report</div>
 </div>
 </div>
 <div class="hero-art">{_helix_svg()}</div>
@@ -578,9 +590,9 @@ simulates 1,500 outcomes to measure uncertainty, and writes a plain-language cli
 
 def feature_tiles():
     tiles = [
-        ("🧬", "4", "Genetic markers screened", "Hereditary cancer genes weighted into the baseline score."),
-        ("🎲", "1,500", "Monte Carlo simulations", "Each run perturbs the baseline to show how certain the estimate is."),
-        ("🤖", "AI", "Clinical summary", "Results translated into next steps a patient can follow."),
+        ("🧬", "4", "Genetic markers screened", "Hereditary cancer genes plus family history, age and smoking."),
+        ("⚛️", "3", "Trained ML models", "Logistic regression, random forest and a Qiskit quantum kernel SVM."),
+        ("🤖", "AI", "Clinical summary", "De-identified results turned into next steps a patient can follow."),
     ]
     cells = "".join(
         f'<div class="feat"><div class="feat-ic">{ic}</div><div class="feat-num">{num}</div>'
@@ -964,6 +976,14 @@ def factor_rows(patient_data: dict):
         code="SM", title="Smoking", sub=smoking, kind="Lifestyle",
         points=spts, status=("Elevated", "warn") if spts else ("Baseline", "good"),
     ))
+    family = patient_data.get("Family History", {}) or {}
+    first, second = family.get("First-degree", 0) or 0, family.get("Second-degree", 0) or 0
+    fpts = quantum_engine.family_history_points(patient_data)
+    rows.append(dict(
+        code="FH", title="Family history",
+        sub=f"{first} first-degree · {second} second-degree relatives", kind="Hereditary",
+        points=fpts, status=("Elevated", "warn") if fpts else ("None reported", "good"),
+    ))
     return rows
 
 
@@ -991,3 +1011,225 @@ def factor_table(patient_data: dict):
         """,
         unsafe_allow_html=True,
     )
+
+
+# ==========================================
+# ML MODEL PREDICTIONS (results page)
+# ==========================================
+MODEL_BLURBS = {
+    "Logistic regression": ("LR", "Linear, explainable"),
+    "Random forest": ("RF", "400 decision trees"),
+    "Quantum kernel SVM": ("QK", "9 qubits · Qiskit"),
+}
+
+
+def models_missing_notice():
+    hint(
+        "ML models not trained yet.",
+        "Run `python -m ml.train` in the final_app folder, then refresh this page.",
+    )
+
+
+def model_predictions(preds: dict, reference: float | None):
+    """Table of each trained model's 20-year risk for this patient."""
+    rows = []
+    for name, p in preds.items():
+        code, blurb = MODEL_BLURBS.get(name, (name[:2].upper(), ""))
+        pct = p * 100
+        label, kind = risk_level(pct)
+        rows.append(f"""
+            <tr>
+                <td><div class="dt-name"><div class="dt-avatar">{code}</div>
+                    <div><div class="dt-title">{_esc(name)}</div><div class="dt-sub">{_esc(blurb)}</div></div></div></td>
+                <td><div class="dt-meter"><div class="dt-track"><div class="dt-fill" style="width:{min(pct, 100):.0f}%"></div></div>
+                    <span class="dt-num">{pct:.0f}%</span></div></td>
+                <td>{badge(label.replace(" risk", ""), kind, dot=True)}</td>
+            </tr>""")
+    if reference is not None:
+        pct = reference * 100
+        rows.append(f"""
+            <tr>
+                <td><div class="dt-name"><div class="dt-avatar off">REF</div>
+                    <div><div class="dt-title">Reference formula</div><div class="dt-sub">Formula that generated the data</div></div></div></td>
+                <td><div class="dt-meter"><div class="dt-track"><div class="dt-fill" style="width:{min(pct, 100):.0f}%;opacity:.35"></div></div>
+                    <span class="dt-num">{pct:.0f}%</span></div></td>
+                <td>{badge("Truth", "neutral", square=True)}</td>
+            </tr>""")
+    st.markdown(
+        f"""<div class="dt-wrap"><table class="dt dt-compact">
+            <thead><tr><th>Model</th><th>20-year risk</th><th>Tier</th></tr></thead>
+            <tbody>{''.join(rows)}</tbody></table></div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def explanation_chart(contributions: list, base_risk: float, patient_risk: float):
+    """
+    Horizontal bars: how much each factor moves this patient's logistic-regression
+    risk up or down compared with an average patient (in log-odds).
+    """
+    t = tokens()
+    rows = [r for r in contributions if abs(r["log_odds"]) >= 0.005][:8][::-1]
+    if not rows:
+        rows = contributions[:1]
+    colors = [t["line"] if r["log_odds"] > 0 else t["muted"] for r in rows]
+    fig = go.Figure(go.Bar(
+        x=[r["log_odds"] for r in rows],
+        y=[r["label"] for r in rows],
+        orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        hovertemplate="%{y}: %{x:+.2f} log-odds<extra></extra>",
+    ))
+    fig.add_vline(x=0, line=dict(color=t["border"], width=1))
+    fig.update_layout(
+        **_base_layout(t, 300),
+        showlegend=False,
+        xaxis=dict(title=dict(text="← lowers risk     raises risk →", font=dict(size=13)),
+                   gridcolor=t["grid"], zeroline=False),
+        yaxis=dict(showgrid=False, automargin=True, tickfont=dict(color=t["text"], size=13)),
+        bargap=0.35,
+    )
+    fig.update_layout(margin=dict(l=8, r=16, t=8, b=48))
+    st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)
+    st.markdown(
+        f'<div class="card-s">An average patient in the training data has a '
+        f'{base_risk * 100:.0f}% predicted risk; these factors move this patient to '
+        f'{patient_risk * 100:.0f}%. Bars are exact logistic-regression contributions '
+        f'(coefficient × standardised value).</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ==========================================
+# MODEL COMPARISON TAB
+# ==========================================
+def _metric_cell(value, best, fmt="{:.3f}"):
+    if value is None:
+        return "–"
+    text = fmt.format(value)
+    is_best = best is not None and abs(value - best) < 1e-9
+    return f'<b style="color:{PRIMARY}">{text}</b>' if is_best else text
+
+
+def model_comparison(metrics: dict):
+    t = tokens()
+    data, models, q = metrics["dataset"], metrics["models"], metrics["quantum"]
+    names = list(models)
+
+    page_header(
+        "Model comparison",
+        f"Classical vs quantum models on {data['n_test']} held-out synthetic patients "
+        f"(trained on {data['n_train']}).",
+        badge("Synthetic data", "warn", dot=True),
+    )
+
+    hint(
+        "About the data:",
+        f"{data['n_patients']:,} simulated patients, not real people. Outcome: "
+        f"{data['outcome']} ({data['outcome_rate'] * 100:.0f}% of patients). Best possible AUC "
+        f"with the true simulated risk: {data['oracle_auc']:.3f}.",
+    )
+
+    trained = [n for n in names if models[n]["cv_auc"] is not None]
+    best = {
+        "auc": max(models[n]["auc"] for n in names),
+        "cv_auc": max(models[n]["cv_auc"] for n in trained),
+        "brier": min(models[n]["brier"] for n in names),
+        "sensitivity": max(models[n]["sensitivity"] for n in names),
+        "specificity": max(models[n]["specificity"] for n in names),
+        "f1": max(models[n]["f1"] for n in names),
+    }
+    rows = []
+    for n in names:
+        m = models[n]
+        cv = "–" if m["cv_auc"] is None else (
+            _metric_cell(m["cv_auc"], best["cv_auc"])
+            + f' <span class="card-s">± {m["cv_auc_std"]:.3f}</span>')
+        rows.append(
+            f"<tr><td><span class='dt-title'>{_esc(n)}</span></td>"
+            f"<td>{_metric_cell(m['auc'], best['auc'])}</td><td>{cv}</td>"
+            f"<td>{_metric_cell(m['brier'], best['brier'])}</td>"
+            f"<td>{_metric_cell(m['sensitivity'], best['sensitivity'], '{:.0%}')}</td>"
+            f"<td>{_metric_cell(m['specificity'], best['specificity'], '{:.0%}')}</td>"
+            f"<td>{_metric_cell(m['f1'], best['f1'])}</td>"
+            f"<td>{m['fit_seconds']:.2f} s</td>"
+            f"<td>{'<0.01' if m['predict_ms'] < 0.01 else format(m['predict_ms'], '.2f')} ms</td></tr>"
+        )
+    with card("metrics"):
+        card_header(
+            "Test-set performance",
+            f"Best value in each column highlighted. Sensitivity, specificity and F1 treat a "
+            f"predicted risk ≥ {data['threshold'] * 100:.0f}% as \"at risk\". Lower Brier is better.",
+            right_html="",
+        )
+        st.markdown(
+            f"""<div class="dt-wrap"><table class="dt dt-compact" style="min-width:760px !important">
+            <thead><tr><th>Model</th><th>Test AUC</th><th>CV AUC</th><th>Brier</th>
+            <th>Sensitivity</th><th>Specificity</th><th>F1</th><th>Fit time</th><th>Predict / patient</th></tr></thead>
+            <tbody>{''.join(rows)}</tbody></table></div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    left, right = st.columns([1.3, 1], gap="medium")
+    palette = [t["muted"], "#B692F6", "#9E77ED", PRIMARY_DARK]
+    with left:
+        with card("roc"):
+            card_header("ROC curves", "True-positive vs false-positive rate on the test set.")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Chance",
+                                     line=dict(color=t["border"], dash="dot", width=1), hoverinfo="skip"))
+            for n, color in zip(names, palette):
+                roc = models[n]["roc"]
+                fig.add_trace(go.Scatter(
+                    x=roc["fpr"], y=roc["tpr"], mode="lines", name=f"{n} ({models[n]['auc']:.3f})",
+                    line=dict(color=color, width=2.5 if "Quantum" in n else 1.8,
+                              dash="dash" if n == "Rule-based score" else "solid"),
+                    hovertemplate="FPR %{x:.2f} · TPR %{y:.2f}<extra>" + n + "</extra>",
+                ))
+            fig.update_layout(
+                **_base_layout(t, 360), showlegend=True,
+                legend=dict(x=0.98, xanchor="right", y=0.02, yanchor="bottom",
+                            bgcolor="rgba(0,0,0,0)", font=dict(color=t["text"], size=12)),
+                xaxis=dict(title="False-positive rate", range=[0, 1], gridcolor=t["grid"], zeroline=False),
+                yaxis=dict(title="True-positive rate", range=[0, 1.02], gridcolor=t["grid"], zeroline=False),
+            )
+            fig.update_layout(margin=dict(l=56, r=16, t=8, b=48))
+            st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)
+    with right:
+        with card("qinfo"):
+            card_header("Quantum model", "Kernel SVM on simulated quantum states.", right_html="")
+            gates = ", ".join(f"{v} {k.upper()}" for k, v in q["gate_counts"].items())
+            items = [
+                ("Qubits", f"{q['qubits']} (one per feature)"),
+                ("Feature map", q["feature_map"]),
+                ("Circuit", f"depth {q['depth']} · {gates} gates"),
+                ("Kernel", "Fidelity |⟨ψ(x)|ψ(y)⟩|², exact simulation"),
+                ("Tuned by CV", f"angle scale {q['best_params']['scale']}, C = {q['best_params']['C']}"),
+                ("Tuning time", f"{models['Quantum kernel SVM'].get('tuning_seconds', 0):.0f} s"),
+            ]
+            st.markdown(
+                "<div class='dt-wrap'><table class='dt' style='min-width:0'><tbody>"
+                + "".join(f"<tr><td style='white-space:nowrap'><span class='dt-title'>{k}</span></td>"
+                          f"<td>{_esc(v)}</td></tr>" for k, v in items)
+                + "</tbody></table></div>",
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    with card("importance"):
+        card_header("What the random forest relies on",
+                    "Feature importance: each feature's share of the forest's total impurity reduction.",
+                    right_html="")
+        from ml.schema import FEATURE_LABELS
+        imp = metrics["feature_importance"]["Random forest (impurity importance)"]
+        pairs = sorted(imp.items(), key=lambda kv: kv[1])
+        fig = go.Figure(go.Bar(
+            x=[v for _, v in pairs], y=[FEATURE_LABELS.get(k, k) for k, _ in pairs], orientation="h",
+            marker=dict(color=t["line"]), hovertemplate="%{y}: %{x:.1%}<extra></extra>",
+        ))
+        fig.update_layout(**_base_layout(t, 320), showlegend=False,
+                          xaxis=dict(tickformat=".0%", gridcolor=t["grid"], zeroline=False),
+                          yaxis=dict(automargin=True, tickfont=dict(color=t["text"], size=13)))
+        fig.update_layout(margin=dict(l=8, r=16, t=8, b=32))
+        st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)

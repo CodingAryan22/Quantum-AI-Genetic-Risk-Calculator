@@ -7,7 +7,7 @@ import numpy as np
 
 # The app's modules import each other as top-level modules (`import ui_modules`),
 # the way `streamlit run final_app.py` loads them, so put final_app/ on the path.
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "final_app"))
+# final_app/ is put on sys.path by tests/conftest.py.
 
 import data_manager  # noqa: E402
 import pdf_builder  # noqa: E402

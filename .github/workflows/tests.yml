@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q tests
+
+      - name: Check the training pipeline still runs end to end (quick mode)
+        working-directory: final_app
+        run: |
+          python -c "from ml import synthetic_data; from ml.train import train_models; \
+          _, m = train_models(synthetic_data.generate(n=600, seed=1), quick=True); \
+          print({k: v['auc'] for k, v in m['models'].items()})"

@@ -4,6 +4,11 @@ import tempfile
 from fpdf import FPDF
 import pandas as pd
 
+try:
+    from features import positive_markers as _positive_markers
+except ModuleNotFoundError:  # imported as final_app.pdf_builder
+    from .features import positive_markers as _positive_markers
+
 # The built-in PDF fonts only cover Latin-1, so map common "smart" punctuation
 # from the AI output to plain equivalents instead of letting it become "?".
 _PUNCTUATION = {
@@ -53,7 +58,7 @@ class PDF(FPDF):
         # Title
         self.cell(0, 10, 'Hereditary Disease Risk Prediction Report', 0, 1, 'C')
         self.set_font('Arial', 'I', 10)
-        self.cell(0, 10, 'Quantum-AI Clinical Dashboard', 0, 1, 'C')
+        self.cell(0, 10, 'RiskPredict - Hybrid Classical / Quantum ML Report', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
@@ -63,7 +68,8 @@ class PDF(FPDF):
         # Page number
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def generate_pdf(patient_data: dict, risk_table: pd.DataFrame, ai_summary: str) -> bytes:
+def generate_pdf(patient_data: dict, risk_table: pd.DataFrame, ai_summary: str,
+                 model_predictions: dict | None = None) -> bytes:
     """
     Compiles patient data, risk metrics, and the AI summary into a formatted PDF.
     Returns the PDF as a byte string for Streamlit to download.
@@ -82,9 +88,8 @@ def generate_pdf(patient_data: dict, risk_table: pd.DataFrame, ai_summary: str) 
     pdf.ln(5)
 
     # --- 2. Genetic Profile ---
-    _section(pdf, ' 2. Genetic Markers Identified')
-    genetics = patient_data.get("Genetic Markers", {})
-    positive_markers = [marker for marker, present in genetics.items() if present]
+    _section(pdf, ' 2. Genetic Markers & Family History')
+    positive_markers = _positive_markers(patient_data)
     
     # Free-typed markers may contain characters the built-in PDF fonts can't encode.
     other_markers = [
@@ -99,21 +104,36 @@ def generate_pdf(patient_data: dict, risk_table: pd.DataFrame, ai_summary: str) 
             pdf.cell(0, 6, f"- {marker} Mutation Reported (not included in risk score)", 0, 1)
     else:
         pdf.cell(0, 6, "No high-risk genetic mutations selected.", 0, 1)
+    family = patient_data.get("Family History", {}) or {}
+    pdf.cell(0, 6, f"- Relatives with cancer: {family.get('First-degree', 0)} first-degree, "
+                   f"{family.get('Second-degree', 0)} second-degree", 0, 1)
     pdf.ln(5)
 
     # --- 3. Risk Analysis Metrics ---
-    _section(pdf, ' 3. Quantum Monte Carlo Risk Metrics')
+    _section(pdf, ' 3. Rule-based Score & Monte Carlo Uncertainty')
     base_risk = risk_table["Base Deterministic Risk"].iloc[0]
     sim_mean = risk_table["Simulated Mean"].iloc[0]
     ci_range = risk_table["90% Confidence Interval"].iloc[0]
     
-    pdf.cell(0, 8, f"Standard Deterministic Baseline: {base_risk}", 0, 1)
-    pdf.cell(0, 8, f"Simulated Quantum Mean: {sim_mean}", 0, 1)
-    pdf.cell(0, 8, f"90% Statistical Confidence Interval: {ci_range}", 0, 1)
+    pdf.cell(0, 8, f"Rule-based baseline score: {base_risk}", 0, 1)
+    pdf.cell(0, 8, f"Monte Carlo mean (1,500 runs): {sim_mean}", 0, 1)
+    pdf.cell(0, 8, f"90% interval: {ci_range}", 0, 1)
     pdf.ln(5)
 
-    # --- 4. AI Clinical Synthesis ---
-    _section(pdf, ' 4. AI-Generated Clinical Synthesis')
+    section = 4
+    if model_predictions:
+        _section(pdf, f' {section}. Machine-Learning Predictions (20-year risk)')
+        for model_name, p in model_predictions.items():
+            pdf.cell(0, 7, _pdf_text(f"{model_name}: {p * 100:.0f}%"), 0, 1)
+        pdf.set_font('Arial', 'I', 9)
+        pdf.multi_cell(0, 5, "Models were trained on simulated (synthetic) patients and are "
+                             "for education and research only.")
+        pdf.set_font('Arial', '', 11)
+        pdf.ln(5)
+        section += 1
+
+    # --- AI Clinical Synthesis ---
+    _section(pdf, f' {section}. AI-Generated Clinical Synthesis')
     # Multi_cell handles text wrapping automatically
     safe_summary = _pdf_text(_strip_markdown(ai_summary))
     pdf.multi_cell(0, 6, safe_summary)

@@ -1,6 +1,12 @@
-streamlit
+streamlit>=1.45
 google-generativeai
 plotly
 pandas
-numpy
-fpdf
+numpy>=2.0
+fpdf2
+# Pinned to the versions the saved models in final_app/models were trained with:
+# a different scikit-learn version may not load them.
+scikit-learn~=1.8.0
+joblib
+qiskit~=2.3.0
+pytest

@@ -10,9 +10,24 @@ except ModuleNotFoundError:
     from .features import normalize_marker_status as _normalize_marker_status
 
 
+# Points per affected relative, counting at most FAMILY_MAX_COUNTED of each kind.
+FIRST_DEGREE_POINTS = 8.0   # parents, siblings, children
+SECOND_DEGREE_POINTS = 3.0  # grandparents, aunts, uncles, nieces, nephews
+FAMILY_MAX_COUNTED = 2
+
+
+def family_history_points(patient_data: dict) -> float:
+    """Rule-based points for relatives diagnosed with cancer."""
+    family = patient_data.get("Family History", {}) or {}
+    first = min(int(family.get("First-degree", 0) or 0), FAMILY_MAX_COUNTED)
+    second = min(int(family.get("Second-degree", 0) or 0), FAMILY_MAX_COUNTED)
+    return first * FIRST_DEGREE_POINTS + second * SECOND_DEGREE_POINTS
+
+
 def calculate_deterministic_risk(patient_data: dict) -> float:
     """
-    Standard Model: rule-based risk estimate with explicit uncertainty handling.
+    Rule-based (hand-weighted) risk score in %: genes, age, smoking and family
+    history. Not trained on data; the ML models in ml/ are compared against it.
     """
     base_risk = 5.0
 
@@ -50,13 +65,15 @@ def calculate_deterministic_risk(patient_data: dict) -> float:
     elif smoking_history == "Former Smoker":
         base_risk += 3.0
 
+    base_risk += family_history_points(patient_data)
+
     final_risk = min(max(base_risk, 5.0), 95.0)
     return round(final_risk, 1)
 
 
 def run_simulation(patient_data: dict, iterations: int = 1500, seed: int | None = None):
     """
-    Quantum Model: Runs Monte Carlo simulation around deterministic baseline
+    Monte Carlo uncertainty simulation around the rule-based baseline
     and converts the simulation density into a 2D Heatmap Matrix.
     """
     base_risk = calculate_deterministic_risk(patient_data)

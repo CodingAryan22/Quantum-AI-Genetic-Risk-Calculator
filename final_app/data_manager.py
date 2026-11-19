@@ -18,6 +18,8 @@ FORM_FIELDS = [
     "blood_group",
     "ancestry",
     "smoking",
+    "family_first",
+    "family_second",
     "brca1",
     "brca2",
     "apc",
@@ -170,6 +172,26 @@ def render_collection_form():
                 ["Never Smoked", "Former Smoker", "Current Smoker"],
                 key=_wk("smoking"),
             )
+            st.markdown("**Family history of cancer**")
+            family_first = st.number_input(
+                "1st-degree relatives with cancer",
+                min_value=0,
+                max_value=10,
+                step=1,
+                value=0,
+                help="Parents, brothers, sisters and children diagnosed with breast, "
+                "ovarian, colorectal, prostate or another related cancer.",
+                key=_wk("family_first"),
+            )
+            family_second = st.number_input(
+                "2nd-degree relatives with cancer",
+                min_value=0,
+                max_value=10,
+                step=1,
+                value=0,
+                help="Grandparents, aunts, uncles, nieces, nephews and half-siblings.",
+                key=_wk("family_second"),
+            )
         with col5:
             st.markdown("**Known Genetic Mutations (check all that apply):**")
             brca1 = st.checkbox("BRCA1 (Breast/Ovarian Cancer Risk)", key=_wk("brca1"))
@@ -229,6 +251,7 @@ def render_collection_form():
         "Blood Group": blood_group,
         "Ancestry": ancestry,
         "Smoking History": smoking,
+        "Family History": {"First-degree": int(family_first), "Second-degree": int(family_second)},
         "Genetic Markers": core,
         "Other Genetic Markers": extra,
         "Lab Report": lab_report,
