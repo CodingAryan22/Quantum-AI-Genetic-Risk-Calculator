@@ -19,8 +19,10 @@ def _patient(**overrides):
         "Name": "Test Patient",
         "Age": 45,
         "Gender": "Female",
-        "Height": None,
-        "Weight": None,
+        "Height": 165.0,
+        "Weight": 60.0,
+        "Blood Group": "O+",
+        "Ancestry": "Asian",
         "Smoking History": "Never Smoked",
         "Genetic Markers": {"BRCA1": False, "BRCA2": False, "APC": False, "TP53": False},
     }
@@ -33,10 +35,18 @@ def test_complete_form_passes_validation():
 
 
 def test_empty_form_lists_every_required_field():
-    problems = data_manager.validate_patient(
-        _patient(Name="  ", Age=None, Gender="Select")
-    )
-    assert len(problems) == 3
+    problems = data_manager.validate_patient(_patient(
+        Name="  ", Age=None, Gender="Select", Height=None, Weight=None,
+        **{"Blood Group": "Select", "Ancestry": "Select"},
+    ))
+    assert len(problems) == 7
+
+
+def test_each_step_only_checks_its_own_fields():
+    incomplete = _patient(Name="", Ancestry="Select")
+    assert data_manager.step_problems(0, incomplete) == ["Enter the patient's full name."]
+    assert data_manager.step_problems(1, incomplete) == ["Select the patient's ancestry/ethnicity."]
+    assert data_manager.step_problems(2, incomplete) == []  # notes step is optional
 
 
 def test_unrealistic_height_and_weight_are_rejected():

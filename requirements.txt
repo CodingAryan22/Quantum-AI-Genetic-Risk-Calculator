@@ -8,5 +8,6 @@ fpdf2
 # a different scikit-learn version may not load them.
 scikit-learn~=1.8.0
 joblib
+pymongo>=4.6
 qiskit~=2.3.0
 pytest

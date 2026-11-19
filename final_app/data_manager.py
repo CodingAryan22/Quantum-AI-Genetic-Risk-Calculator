@@ -1,3 +1,5 @@
+import re
+
 import streamlit as st
 import ui_modules
 
@@ -84,153 +86,41 @@ def clear_form():
             del st.session_state[old_key]
     # Advance the generation so all widget keys change on the next run.
     st.session_state[_RESET_KEY] = _generation() + 1
+    st.session_state[_STEP_KEY] = 0
 
 
-def _info_card(icon: str, title: str, body: str):
-    """Short hint line shown at the top of each form tab."""
-    ui_modules.hint(title, body)
+STEPS = ["Demographics & vitals", "Markers & history", "Reports & notes"]
+_STEP_KEY = "_form_step"
+
+GENDERS = ["Select", "Male", "Female", "Other"]
+BLOOD_GROUPS = ["Select", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+ANCESTRIES = ["Select", "Asian", "African", "Caucasian", "Hispanic", "Other"]
+SMOKING = ["Never Smoked", "Former Smoker", "Current Smoker"]
 
 
-def render_collection_form():
-    """
-    Renders the clinical data input UI as a polished, wizard-style set of
-    steps and returns a dictionary containing all patient data.
+def current_step() -> int:
+    return st.session_state.get(_STEP_KEY, 0)
 
-    The returned dictionary keeps the exact same schema as before so the
-    quantum / AI / PDF modules continue to work unchanged.
-    """
-    tabs = st.tabs(
-        ["Demographics & vitals", "Markers & history", "Reports & notes"]
-    )
 
-    # ---------------------------
-    # STEP 1: Demographics & Vitals
-    # ---------------------------
-    with tabs[0]:
-        _info_card(
-            "👤",
-            "Patient Profile",
-            "Basic identifying and biometric information used to calibrate baseline risk.",
-        )
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            name = st.text_input("Full Name *", placeholder="e.g. Jane Smith", key=_wk("name"))
-            age = st.number_input(
-                "Age *",
-                min_value=0,
-                max_value=120,
-                step=1,
-                value=None,
-                placeholder="Type age…",
-                key=_wk("age"),
-            )
-        with col2:
-            gender = st.selectbox(
-                "Gender *", ["Select", "Male", "Female", "Other"], key=_wk("gender")
-            )
-            height = st.number_input(
-                "Height (cm)",
-                min_value=0.0,
-                step=1.0,
-                value=None,
-                placeholder="e.g. 170",
-                key=_wk("height"),
-            )
-        with col3:
-            weight = st.number_input(
-                "Weight (kg)",
-                min_value=0.0,
-                step=1.0,
-                value=None,
-                placeholder="e.g. 70",
-                key=_wk("weight"),
-            )
-            blood_group = st.selectbox(
-                "Blood Group",
-                ["Select", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-                key=_wk("blood_group"),
-            )
+def _go_to(step: int):
+    st.session_state[_STEP_KEY] = step
 
-    # ---------------------------
-    # STEP 2: Medical History & Genetic Markers
-    # ---------------------------
-    with tabs[1]:
-        _info_card(
-            "🧬",
-            "Genetic & Lifestyle Factors",
-            "Select any known hereditary markers and lifestyle factors that influence risk scoring.",
-        )
-        col4, col5 = st.columns(2)
-        with col4:
-            ancestry = st.selectbox(
-                "Ancestry/Ethnicity",
-                ["Select", "Asian", "African", "Caucasian", "Hispanic", "Other"],
-                key=_wk("ancestry"),
-            )
-            smoking = st.selectbox(
-                "Smoking History",
-                ["Never Smoked", "Former Smoker", "Current Smoker"],
-                key=_wk("smoking"),
-            )
-            st.markdown("**Family history of cancer**")
-            family_first = st.number_input(
-                "1st-degree relatives with cancer",
-                min_value=0,
-                max_value=10,
-                step=1,
-                help="Parents, brothers, sisters and children diagnosed with breast, "
-                "ovarian, colorectal, prostate or another related cancer.",
-                key=_wk("family_first"),
-            )
-            family_second = st.number_input(
-                "2nd-degree relatives with cancer",
-                min_value=0,
-                max_value=10,
-                step=1,
-                help="Grandparents, aunts, uncles, nieces, nephews and half-siblings.",
-                key=_wk("family_second"),
-            )
-        with col5:
-            st.markdown("**Known Genetic Mutations (check all that apply):**")
-            brca1 = st.checkbox("BRCA1 (Breast/Ovarian Cancer Risk)", key=_wk("brca1"))
-            brca2 = st.checkbox("BRCA2 (Breast/Ovarian Cancer Risk)", key=_wk("brca2"))
-            apc = st.checkbox("APC (Colorectal Cancer Risk)", key=_wk("apc"))
-            tp53 = st.checkbox("TP53 (Li-Fraumeni Syndrome)", key=_wk("tp53"))
-            other_markers = st.multiselect(
-                "Other mutations",
-                SUGGESTED_MARKERS,
-                accept_new_options=True,
-                placeholder="Type a gene (e.g. PALB2) and press Enter",
-                help="Pick from the list or type any mutation and press Enter to add it. "
-                "These are included in the report and AI summary but not in the numeric score.",
-                key=_wk("other_markers"),
-            )
 
-    # ---------------------------
-    # STEP 3: Reports & Notes
-    # ---------------------------
-    with tabs[2]:
-        _info_card(
-            "🗂️",
-            "Lab Reports & Clinical Notes",
-            "Optionally attach a lab report for reference and add any physician notes.",
-        )
-        lab_report = st.file_uploader(
-            "Upload Lab Report (PDF/IMG)", type=["pdf", "png", "jpg", "jpeg"], key=_wk("lab_report")
-        )
-        additional_details = st.text_area(
-            "Additional Clinical Details",
-            placeholder="Enter any other relevant symptoms, family history, or physician notes...",
-            height=140,
-            key=_wk("additional_details"),
-        )
+def _val(field: str, default=None):
+    """A form field's value, whether or not its widget is on screen this run."""
+    return st.session_state.get(_wk(field), default)
 
-    # ---------------------------
-    # Package everything into the standard dictionary
-    # ---------------------------
-    core = {"BRCA1": brca1, "BRCA2": brca2, "APC": apc, "TP53": tp53}
+
+def collect_patient() -> dict:
+    """Builds the patient dictionary from every saved form value."""
+    core = {
+        "BRCA1": bool(_val("brca1", False)),
+        "BRCA2": bool(_val("brca2", False)),
+        "APC": bool(_val("apc", False)),
+        "TP53": bool(_val("tp53", False)),
+    }
     extra = []
-    for marker in other_markers:
+    for marker in _val("other_markers", []) or []:
         marker = marker.strip()
         if not marker:
             continue
@@ -240,47 +130,174 @@ def render_collection_form():
         elif marker.lower() not in {m.lower() for m in extra}:
             extra.append(marker)
 
-    patient_data = {
-        "Name": name,
-        "Age": age,
-        "Gender": gender,
-        "Height": height,
-        "Weight": weight,
-        "Blood Group": blood_group,
-        "Ancestry": ancestry,
-        "Smoking History": smoking,
-        "Family History": {"First-degree": int(family_first), "Second-degree": int(family_second)},
+    return {
+        "Name": _val("name", ""),
+        "Age": _val("age"),
+        "Gender": _val("gender", "Select"),
+        "Height": _val("height"),
+        "Weight": _val("weight"),
+        "Blood Group": _val("blood_group", "Select"),
+        "Ancestry": _val("ancestry", "Select"),
+        "Smoking History": _val("smoking", "Never Smoked"),
+        "Family History": {
+            "First-degree": int(_val("family_first", 0) or 0),
+            "Second-degree": int(_val("family_second", 0) or 0),
+        },
         "Genetic Markers": core,
         "Other Genetic Markers": extra,
-        "Lab Report": lab_report,
-        "Additional Details": additional_details,
+        "Lab Report": _val("lab_report"),
+        "Additional Details": _val("additional_details", ""),
     }
 
-    return patient_data
+
+def step_problems(step: int, patient: dict) -> list[str]:
+    """What is still missing or wrong on one step (empty list = step complete)."""
+    problems = []
+    if step == 0:
+        if not (patient.get("Name") or "").strip():
+            problems.append("Enter the patient's full name.")
+        if patient.get("Age") is None:
+            problems.append("Enter the patient's age.")
+        if patient.get("Gender") in (None, "Select"):
+            problems.append("Select the patient's gender.")
+        height, weight = patient.get("Height"), patient.get("Weight")
+        if not height:
+            problems.append("Enter the patient's height.")
+        elif not 40 <= height <= 250:
+            problems.append("Height should be between 40 and 250 cm.")
+        if not weight:
+            problems.append("Enter the patient's weight.")
+        elif not 2 <= weight <= 350:
+            problems.append("Weight should be between 2 and 350 kg.")
+        if patient.get("Blood Group") in (None, "Select"):
+            problems.append("Select the patient's blood group.")
+    elif step == 1:
+        if patient.get("Ancestry") in (None, "Select"):
+            problems.append("Select the patient's ancestry/ethnicity.")
+    # Step 3 (lab report and notes) is optional.
+    return problems
 
 
 def validate_patient(patient_data: dict) -> list[str]:
-    """
-    Returns a list of problems that should block the analysis (empty = OK).
+    """Every problem across all steps (empty = ready to generate)."""
+    return [p for step in range(len(STEPS)) for p in step_problems(step, patient_data)]
 
-    Name, age and gender are required; height and weight are optional but
-    must be realistic when given.
-    """
-    problems = []
-    if not (patient_data.get("Name") or "").strip():
-        problems.append("Enter the patient's full name.")
-    if patient_data.get("Age") is None:
-        problems.append("Enter the patient's age.")
-    if patient_data.get("Gender") in (None, "Select"):
-        problems.append("Select the patient's gender.")
 
-    height = patient_data.get("Height")
-    if height and not 40 <= height <= 250:
-        problems.append("Height should be between 40 and 250 cm.")
-    weight = patient_data.get("Weight")
-    if weight and not 2 <= weight <= 350:
-        problems.append("Weight should be between 2 and 350 kg.")
-    return problems
+def _stepper(step: int):
+    items = []
+    for i, label in enumerate(STEPS):
+        state = "done" if i < step else "current" if i == step else "todo"
+        mark = "✓" if i < step else str(i + 1)
+        items.append(f'<div class="wz-step wz-{state}"><span class="wz-n">{mark}</span>'
+                     f'<span class="wz-l">{label}</span></div>')
+    bar = '<div class="wz-sep"></div>'.join(items)
+    st.markdown(f'<div class="wz">{bar}</div>', unsafe_allow_html=True)
+
+
+def _step_demographics():
+    ui_modules.hint("Patient profile", "All fields on this step are required.")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.text_input("Full Name *", placeholder="e.g. Jane Smith", key=_wk("name"))
+        st.number_input("Age *", min_value=0, max_value=120, step=1, value=None,
+                        placeholder="Type age…", key=_wk("age"))
+    with col2:
+        st.selectbox("Gender *", GENDERS, key=_wk("gender"))
+        st.number_input("Height (cm) *", min_value=0.0, step=1.0, value=None,
+                        placeholder="e.g. 170", key=_wk("height"))
+    with col3:
+        st.number_input("Weight (kg) *", min_value=0.0, step=1.0, value=None,
+                        placeholder="e.g. 70", key=_wk("weight"))
+        st.selectbox("Blood Group *", BLOOD_GROUPS, key=_wk("blood_group"))
+
+
+def _step_markers():
+    ui_modules.hint("Genetic & lifestyle factors",
+                    "Tick any known mutations; leave them unticked if none were found.")
+    col4, col5 = st.columns(2)
+    with col4:
+        st.selectbox("Ancestry/Ethnicity *", ANCESTRIES, key=_wk("ancestry"))
+        st.selectbox("Smoking History *", SMOKING, key=_wk("smoking"))
+        st.markdown("**Family history of cancer**")
+        st.number_input(
+            "1st-degree relatives with cancer", min_value=0, max_value=10, step=1,
+            help="Parents, brothers, sisters and children diagnosed with breast, "
+            "ovarian, colorectal, prostate or another related cancer.",
+            key=_wk("family_first"),
+        )
+        st.number_input(
+            "2nd-degree relatives with cancer", min_value=0, max_value=10, step=1,
+            help="Grandparents, aunts, uncles, nieces, nephews and half-siblings.",
+            key=_wk("family_second"),
+        )
+    with col5:
+        st.markdown("**Known genetic mutations (check all that apply)**")
+        st.checkbox("BRCA1 (Breast/Ovarian Cancer Risk)", key=_wk("brca1"))
+        st.checkbox("BRCA2 (Breast/Ovarian Cancer Risk)", key=_wk("brca2"))
+        st.checkbox("APC (Colorectal Cancer Risk)", key=_wk("apc"))
+        st.checkbox("TP53 (Li-Fraumeni Syndrome)", key=_wk("tp53"))
+        st.multiselect(
+            "Other mutations", SUGGESTED_MARKERS, accept_new_options=True,
+            placeholder="Type a gene (e.g. PALB2) and press Enter",
+            help="Pick from the list or type any mutation and press Enter to add it. "
+            "These are included in the report and AI summary but not in the numeric score.",
+            key=_wk("other_markers"),
+        )
+
+
+def _step_notes():
+    ui_modules.hint("Lab reports & clinical notes", "Optional. Add anything else the clinician knows.")
+    st.file_uploader("Upload Lab Report (PDF/IMG)", type=["pdf", "png", "jpg", "jpeg"],
+                     key=_wk("lab_report"))
+    st.text_area(
+        "Additional Clinical Details",
+        placeholder="Enter any other relevant symptoms, family history, or physician notes...",
+        height=140, key=_wk("additional_details"),
+    )
+
+
+def render_collection_form() -> tuple[dict, bool]:
+    """
+    Draws the 3-step patient form. Only the current step's fields are shown;
+    Next unlocks once that step is complete, and the last step has Generate.
+
+    Returns (patient_data, generate_clicked).
+    """
+    # Only one step's fields are drawn per run; keep the other steps' answers.
+    keep_form_values()
+    step = current_step()
+    _stepper(step)
+    [_step_demographics, _step_markers, _step_notes][step]()
+
+    patient = collect_patient()
+    problems = step_problems(step, patient)
+    last = step == len(STEPS) - 1
+
+    st.markdown("<div style='height:0.25rem'></div>", unsafe_allow_html=True)
+    back_col, msg_col, next_col = st.columns([1, 2.6, 1.4], vertical_alignment="center")
+    with back_col:
+        if step > 0:
+            st.button("Back", icon=":material/arrow_back:", width="stretch",
+                      on_click=_go_to, args=(step - 1,), key="wz-back")
+    with msg_col:
+        if problems:
+            # "Enter the patient's full name." -> "full name"; range errors stay as written.
+            short = [
+                re.sub(r"^(Enter|Select) the patient's ", "", p).rstrip(".")
+                for p in problems
+            ]
+            st.markdown(f'<div class="wz-missing"><b>Still needed:</b> {", ".join(short)}</div>',
+                        unsafe_allow_html=True)
+    generate = False
+    with next_col:
+        if last:
+            generate = st.button("Generate risk analysis", type="primary", width="stretch",
+                                 disabled=bool(validate_patient(patient)), key="wz-generate")
+        else:
+            st.button("Next", type="primary", icon=":material/arrow_forward:",
+                      icon_position="right", width="stretch", disabled=bool(problems),
+                      on_click=_go_to, args=(step + 1,), key="wz-next")
+    return patient, generate
 
 
 def keep_form_values():

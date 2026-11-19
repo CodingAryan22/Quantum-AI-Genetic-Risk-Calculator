@@ -6,6 +6,8 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 import ai_synthesizer
+import storage
+import ui_modules
 import views
 
 APP = os.path.join(os.path.dirname(__file__), "..", "final_app", "final_app.py")
@@ -23,6 +25,13 @@ PATIENT = {
 def no_gemini(monkeypatch):
     """Never call the real Gemini API from tests."""
     monkeypatch.setattr(ai_synthesizer, "generate_report", lambda *a, **k: "Test summary.")
+
+
+@pytest.fixture(autouse=True)
+def temp_records(monkeypatch, tmp_path):
+    """Never write test patients into the real database."""
+    store = storage.LocalStore(tmp_path / "records.json")
+    monkeypatch.setattr(views, "get_store", lambda: (store, None))
 
 
 def _page(function_name: str, state: dict | None = None) -> AppTest:
@@ -46,7 +55,8 @@ def test_full_app_starts_on_home():
     assert any("Start new assessment" in b.label for b in at.button)
 
 
-@pytest.mark.parametrize("page", ["home", "new_assessment", "results", "model_comparison", "about"])
+@pytest.mark.parametrize(
+    "page", ["home", "new_assessment", "results", "patient_records", "model_comparison", "about"])
 def test_page_renders(page):
     _page(page)
 
@@ -59,9 +69,42 @@ def test_results_page_with_an_analysis_shows_all_tabs():
     assert results["summary"] == "Test summary."
 
 
-def test_generate_with_empty_form_shows_validation_errors():
+def _button(at, label):
+    return next(b for b in at.button if b.label == label)
+
+
+def test_wizard_unlocks_each_step_only_when_it_is_complete():
     at = _page("new_assessment")
-    next(b for b in at.button if b.label == "Generate risk analysis").click().run()
-    assert not at.exception, at.exception
-    assert any("Please fix the following" in e.value for e in at.error)
-    assert views.RESULTS_KEY not in at.session_state
+    assert _button(at, "Next").disabled  # step 1 is empty
+
+    at.text_input(key="name_0").set_value("Test Patient")
+    at.number_input(key="age_0").set_value(45)
+    at.selectbox(key="gender_0").set_value("Female")
+    at.number_input(key="height_0").set_value(165.0)
+    at.number_input(key="weight_0").set_value(60.0)
+    at.run()
+    assert _button(at, "Next").disabled  # blood group still missing
+    at.selectbox(key="blood_group_0").set_value("O+").run()
+    _button(at, "Next").click().run()
+
+    # Step 2: ancestry is required, everything else has a default.
+    assert any(s.key == "ancestry_0" for s in at.selectbox)
+    assert _button(at, "Next").disabled
+    at.selectbox(key="ancestry_0").set_value("Asian").run()
+    _button(at, "Next").click().run()
+
+    # Step 3 is optional, so Generate is ready; Back still keeps earlier answers.
+    assert not _button(at, "Generate risk analysis").disabled
+    _button(at, "Back").click().run()
+    _button(at, "Back").click().run()
+    assert at.text_input(key="name_0").value == "Test Patient"
+
+
+def test_patient_records_page_lists_saved_patients():
+    store, _ = views.get_store()
+    tier, _ = ui_modules.risk_level(42.8)
+    results = {"base": 43.0, "mean": 42.8, "ci": (35.7, 50.4), "models": {}, "summary": "S."}
+    store.save(storage.build_record(PATIENT, results, tier))
+    at = _page("patient_records")
+    html = " ".join(m.value for m in at.markdown)
+    assert "Test Patient" in html and "Breast cancer" in html

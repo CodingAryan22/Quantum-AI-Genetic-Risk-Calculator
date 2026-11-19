@@ -11,8 +11,9 @@ results into a plain-language summary with Google Gemini.
 
 ## Features
 
-- **Five pages** in a sidebar menu: Home, New assessment, Results (Overview / Models / Details tabs), Model comparison, About & method
-- **Patient form** with validation: demographics, genetic markers, family history (1st- and 2nd-degree relatives), notes and lab report upload
+- **Six pages** in a sidebar menu: Home, New assessment, Results (Overview / Models / Details tabs), Patient records, Model comparison, About & method
+- **3-step patient form** (Demographics → Markers & history → Notes): Next unlocks only when the step is complete
+- **Patient records in MongoDB:** every assessment is saved; the records page lists patients with their risk history and linked diseases
 - **Rule-based score** with 1,500-run **Monte Carlo** uncertainty (mean and 90% interval)
 - **Three trained models** predicting 20-year risk:
   - Logistic regression
@@ -38,6 +39,27 @@ GEMINI_API_KEY = "your-key"
 ```
 
 `secrets.toml` is git-ignored. The rest of the app works without a key.
+
+## Database (MongoDB)
+
+Every generated assessment is saved to MongoDB, in the `assessments` collection of the
+`riskpredict` database (one document per assessment, grouped into patients by name).
+
+**Local MongoDB (default).** Install [MongoDB Community Server](https://www.mongodb.com/try/download/community)
+and make sure it's running. On Windows it runs as the "MongoDB" service. The app connects to
+`mongodb://localhost:27017` automatically; nothing to configure.
+
+**MongoDB Atlas (cloud).** Create a free cluster, add a database user, allow your IP under
+*Network Access*, copy the connection string, and add it to `final_app/.streamlit/secrets.toml`:
+
+```toml
+MONGODB_URI = "mongodb+srv://<user>:<password>@<cluster>.mongodb.net/"
+MONGODB_DB = "riskpredict"   # optional, this is the default
+```
+
+**No database?** If MongoDB can't be reached, the app keeps working and saves records to
+`final_app/data/patient_records.json` instead (git-ignored); the Patient records page shows
+which storage is in use. To browse the data directly, use MongoDB Compass with the same URI.
 
 ## Reproduce the data and models
 
@@ -80,7 +102,8 @@ See `final_app/ml/synthetic_data.py` for the full description. In short:
 ```
 final_app/
   final_app.py        Streamlit entry point: sidebar navigation, theme
-  views.py            pages: Home, New assessment, Results, Model comparison, About
+  views.py            pages: Home, New assessment, Results, Patient records, Model comparison, About
+  storage.py          saves assessments to MongoDB (local JSON file if MongoDB is unavailable)
   data_manager.py     patient form and validation
   quantum_engine.py   rule-based score + Monte Carlo uncertainty simulation
   ai_synthesizer.py   de-identified Gemini prompt and summary

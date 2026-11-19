@@ -13,3 +13,5 @@ share/
 etc/
 pyvenv.cfg
 *.pyc
+# Patient records saved by the app when MongoDB is not available
+final_app/data/patient_records.json

@@ -58,7 +58,7 @@ with st.sidebar:
         st.rerun()
 
     ui_modules.sidebar_label("Appearance")
-    dark_mode = st.toggle("Dark mode", value=False, key="dark_mode")
+    dark_mode = st.toggle("Dark mode", value=True, key="dark_mode")
     ui_modules.sidebar_footer()
 
 ui_modules.apply_theme(dark_mode)

@@ -5,6 +5,7 @@ selected one; each page is a plain function.
     Home              hero + published research figures
     New assessment    the patient form; Generate runs everything and opens Results
     Results           patient summary bar, then Overview / Models / Details tabs
+    Patient records   every saved assessment (MongoDB), grouped by patient
     Model comparison  classical vs quantum metrics
     About             method, data, privacy and disclaimer
 """
@@ -17,6 +18,7 @@ import ai_synthesizer
 import data_manager
 import pdf_builder
 import quantum_engine
+import storage
 import ui_modules
 from ml import predictor, synthetic_data
 from ml.schema import MARKERS, patient_to_vector
@@ -78,6 +80,23 @@ def run_analysis(patient_data: dict) -> dict:
     }
 
 
+@st.cache_resource(show_spinner="Connecting to the database…")
+def get_store():
+    """(store, error): MongoDB if reachable, otherwise the local JSON file."""
+    return storage.connect()
+
+
+def save_assessment(patient_data: dict, results: dict):
+    """Saves one assessment; a database problem never blocks the results."""
+    store, _ = get_store()
+    tier, _ = ui_modules.risk_level(results["mean"])
+    try:
+        store.save(storage.build_record(patient_data, results, tier))
+        st.session_state["_saved_to"] = store.name
+    except Exception as exc:
+        st.session_state["_save_error"] = f"Could not save this assessment: {exc}"
+
+
 def _gap(rem: float = 0.5):
     st.markdown(f"<div style='height:{rem}rem'></div>", unsafe_allow_html=True)
 
@@ -101,25 +120,17 @@ def home():
 def new_assessment():
     ui_modules.page_header(
         "New assessment",
-        "Enter the patient's details. Required fields are marked *.",
+        "Three short steps. Next unlocks once the current step is complete.",
     )
     with ui_modules.card("form"):
-        patient_data = data_manager.render_collection_form()
-        _, btn_col = st.columns([3, 1.3])
-        with btn_col:
-            generate = st.button("Generate risk analysis", type="primary", width="stretch")
+        patient_data, generate = data_manager.render_collection_form()
 
-        problems = data_manager.validate_patient(patient_data) if generate else []
-        if problems:
-            st.error(
-                "**Please fix the following before generating the analysis:**\n\n"
-                + "\n".join(f"- {p}" for p in problems),
-                icon=":material/error:",
-            )
-
-    if generate and not problems:
+    # Generate is disabled until every step is valid; check again to be safe.
+    if generate and not data_manager.validate_patient(patient_data):
         with st.spinner("Running the models and writing the AI summary…"):
-            st.session_state[RESULTS_KEY] = run_analysis(patient_data)
+            results = run_analysis(patient_data)
+            st.session_state[RESULTS_KEY] = results
+            save_assessment(patient_data, results)
         st.switch_page(pages()["results"])
 
 
@@ -133,6 +144,11 @@ def results():
             if st.button("Start new assessment", type="primary", icon=":material/add:", width="stretch"):
                 st.switch_page(pages()["new"])
         return
+
+    if saved_to := st.session_state.pop("_saved_to", None):
+        st.toast(f"Saved to patient records ({saved_to}).", icon="✅")
+    if save_error := st.session_state.pop("_save_error", None):
+        st.warning(save_error, icon=":material/warning:")
 
     patient = res["patient"]
     label, kind = ui_modules.risk_level(res["mean"])
@@ -223,6 +239,100 @@ def results():
     ui_modules.footer_note()
 
 
+def patient_records():
+    store, error = get_store()
+    where = (f"MongoDB · {store.location}" if store.name == "MongoDB" else "Local file")
+    ui_modules.page_header(
+        "Patient records",
+        "Every saved assessment, grouped by patient name.",
+        ui_modules.badge(where, "good" if store.name == "MongoDB" else "warn", dot=True),
+    )
+    if error:
+        ui_modules.hint(
+            "MongoDB not reachable, using a local file instead.",
+            f"Start MongoDB or set MONGODB_URI, then reload. ({error})",
+        )
+
+    try:
+        patients = storage.group_patients(store.all_records())
+    except Exception as exc:
+        st.error(f"Could not read records: {exc}", icon=":material/error:")
+        return
+
+    if not patients:
+        ui_modules.hint("No records yet.", "Each analysis you generate is saved here automatically.")
+        if st.button("Start new assessment", type="primary", icon=":material/add:"):
+            st.switch_page(pages()["new"])
+        return
+
+    ui_modules.records_stats(patients)
+    _gap(1)
+
+    search_col, tier_col = st.columns([1.6, 1.4], vertical_alignment="bottom")
+    with search_col:
+        query = st.text_input("Search", placeholder="Search by name, mutation or disease",
+                              key="records-search", label_visibility="collapsed")
+    with tier_col:
+        tier = st.segmented_control("Tier", ["All", "Low", "Moderate", "High"], default="All",
+                                    key="records-tier", label_visibility="collapsed")
+    q = (query or "").strip().lower()
+    shown = [
+        p for p in patients
+        if (not q or q in p["name"].lower()
+            or any(q in m.lower() for m in p["markers"])
+            or any(q in d.lower() for d in p["diseases"]))
+        and (tier in (None, "All") or p["latest_tier"].startswith(tier))
+    ]
+
+    with ui_modules.card("records"):
+        ui_modules.card_header(
+            f"Patients ({len(shown)} of {len(patients)})",
+            "Latest result per patient. Linked diseases come from the patient's mutations.",
+            right_html="",
+        )
+        if shown:
+            ui_modules.records_table(shown)
+        else:
+            st.caption("No patients match this search.")
+
+    if not shown:
+        return
+    _gap()
+    with ui_modules.card("history"):
+        names = {p["key"]: p for p in shown}
+        key = st.selectbox(
+            "Patient history", list(names), format_func=lambda k: names[k]["name"],
+            key="records-patient",
+        )
+        p = names[key]
+        ui_modules.card_header(
+            f"{p['name']} · {p['assessments']} assessment{'s' if p['assessments'] != 1 else ''}",
+            "Risk over time. The shaded band is each assessment's 90% range.",
+            right_html=ui_modules.badge(p["latest_tier"], ui_modules.risk_level(p["latest_mean"])[1], dot=True),
+        )
+        if p["assessments"] > 1:
+            ui_modules.history_chart(p["history"])
+        ui_modules.history_table(p["history"])
+
+        latest = p["history"][0]
+        if latest.get("summary"):
+            with st.expander("Latest AI clinical summary"):
+                st.markdown(latest["summary"])
+        if latest["patient"].get("notes"):
+            with st.expander("Clinical notes"):
+                st.write(latest["patient"]["notes"])
+
+        with st.popover("Delete this patient's records", icon=":material/delete:"):
+            st.write(f"This permanently deletes all {p['assessments']} saved assessments for "
+                     f"**{p['name']}**. It cannot be undone.")
+            if st.button("Yes, delete permanently", type="primary", key=f"del-{key}"):
+                removed = store.delete_patient(key)
+                st.toast(f"Deleted {removed} record(s) for {p['name']}.", icon="🗑️")
+                st.rerun()
+
+    ui_modules.footer_note()
+
+
 def model_comparison():
     metrics = get_metrics()
     if metrics:
@@ -246,6 +356,8 @@ def pages() -> dict:
                        url_path="new-assessment"),
         "results": st.Page(results, title="Results", icon=":material/monitoring:",
                            url_path="results"),
+        "records": st.Page(patient_records, title="Patient records", icon=":material/groups:",
+                           url_path="patient-records"),
         "models": st.Page(model_comparison, title="Model comparison", icon=":material/insights:",
                           url_path="model-comparison"),
         "about": st.Page(about, title="About & method", icon=":material/info:", url_path="about"),

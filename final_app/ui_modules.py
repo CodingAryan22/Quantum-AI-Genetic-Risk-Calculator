@@ -478,6 +478,23 @@ def apply_theme(is_dark_mode: bool = False):
         background: {PRIMARY_DARK} !important;
     }}
     .stButton > button[kind="primary"] p, .stDownloadButton > button[kind="primary"] p {{ color: #fff !important; }}
+    /* Segmented controls (e.g. the tier filter on Patient records) follow the theme. */
+    [data-testid="stBaseButton-segmented_control"] {{
+        background: {t['surface']} !important; border-color: {t['input_border']} !important;
+    }}
+    [data-testid="stBaseButton-segmented_control"] p {{ color: {t['text']} !important; }}
+    [data-testid="stBaseButton-segmented_control"]:hover {{ background: {t['subtle']} !important; }}
+    [data-testid="stBaseButton-segmented_controlActive"] {{
+        background: {t['primary_soft']} !important; border-color: {t['line']} !important;
+    }}
+    [data-testid="stBaseButton-segmented_controlActive"] p {{ color: {t['primary_text']} !important; font-weight: 600 !important; }}
+    [data-testid="stButtonGroup"] > div {{ flex-wrap: nowrap !important; }}
+    /* Disabled buttons (e.g. Next before a step is complete) must look unavailable. */
+    .stButton > button:disabled, .stButton > button[disabled] {{
+        background: {t['subtle']} !important; border-color: {t['border']} !important;
+        box-shadow: none !important; cursor: not-allowed !important; opacity: 1 !important;
+    }}
+    .stButton > button:disabled p, .stButton > button:disabled span {{ color: {t['muted']} !important; }}
 
     /* ---------- Tabs ---------- */
     .stTabs [data-baseweb="tab-list"] {{ gap: 0.25rem; border-bottom: 1px solid {t['border']}; }}
@@ -572,6 +589,22 @@ def apply_theme(is_dark_mode: bool = False):
     .ab-s {{ color: {t['muted']}; font-size: 0.85rem; margin-top: 0.2rem; line-height: 1.5; }}
     .ab-body p {{ color: {t['text']}; font-size: 0.9rem !important; line-height: 1.6 !important; margin: 0.6rem 0 0 0; }}
     .ab-body b {{ color: {t['heading']}; }}
+
+    /* ---------- Form wizard ---------- */
+    .wz {{ display: flex; align-items: center; gap: 0.75rem; margin: 0.1rem 0 1.25rem 0; flex-wrap: wrap; }}
+    .wz-step {{ display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 500; color: {t['muted']}; }}
+    .wz-n {{
+        width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+        font-size: 0.82rem; font-weight: 600; border: 1.5px solid {t['input_border']};
+        color: {t['muted']}; background: {t['surface']};
+    }}
+    .wz-current {{ color: {t['heading']}; }}
+    .wz-current .wz-n {{ background: {PRIMARY}; border-color: {PRIMARY}; color: #fff; box-shadow: 0 0 0 4px rgba(158,119,237,0.25); }}
+    .wz-done {{ color: {t['text']}; }}
+    .wz-done .wz-n {{ background: {t['primary_soft']}; border-color: {t['primary_soft_border']}; color: {t['primary_text']}; }}
+    .wz-sep {{ flex: 1; min-width: 24px; height: 2px; border-radius: 2px; background: {t['border']}; }}
+    @media (max-width: 640px) {{ .wz-l {{ display: none; }} .wz-current .wz-l {{ display: inline; }} }}
+    .wz-missing {{ font-size: 0.85rem; color: {t['muted']}; line-height: 1.45; }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -1404,8 +1437,10 @@ def about_page(metrics: dict | None):
             st.markdown(
                 '<div class="ab-body"><p>Only de-identified data is sent to the AI: no name, a '
                 '10-year age band instead of the exact age, and emails, phone numbers and ID numbers '
-                'removed from the notes.</p><p>Patient details stay in this browser session and are '
-                'cleared with <b>Clear all records</b>. Nothing is stored on a server.</p></div>',
+                'removed from the notes.</p><p>Each generated assessment is saved to the patient '
+                'records database (MongoDB, or a local file if MongoDB is unavailable), including the '
+                'patient name, so it can be found again. Uploaded lab reports are not saved. '
+                'Records can be deleted from the <b>Patient records</b> page.</p></div>',
                 unsafe_allow_html=True,
             )
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -1418,3 +1453,122 @@ def about_page(metrics: dict | None):
                 'counselor.</p></div>',
                 unsafe_allow_html=True,
             )
+
+
+# ==========================================
+# PATIENT RECORDS PAGE
+# ==========================================
+def fmt_when(dt) -> str:
+    """Local date and time, e.g. '19 Nov 2026, 16:42'."""
+    return dt.astimezone().strftime("%d %b %Y, %H:%M")
+
+
+def records_stats(patients: list):
+    total = sum(p["assessments"] for p in patients)
+    high = sum(1 for p in patients if p["latest_tier"] == "High risk")
+    moderate = sum(1 for p in patients if p["latest_tier"] == "Moderate risk")
+    tiles = [
+        ("Patients", f"{len(patients)}", "People with at least one saved assessment"),
+        ("Assessments", f"{total}", "All saved analyses, including repeats"),
+        ("Need follow-up", f"{high + moderate}", f"{high} high risk · {moderate} moderate risk (latest result)"),
+    ]
+    cols = st.columns(3)
+    for col, (label, value, foot) in zip(cols, tiles):
+        col.markdown(
+            f'<div class="kpi"><div class="kpi-label">{label}</div>'
+            f'<div class="kpi-row"><div class="kpi-value">{value}</div></div>'
+            f'<div class="kpi-foot">{_esc(foot)}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _chips(items: list, kind: str = "neutral", empty: str = "None") -> str:
+    if not items:
+        return f'<span class="card-s">{_esc(empty)}</span>'
+    return " ".join(badge(i, kind, square=True) for i in items)
+
+
+def records_table(patients: list):
+    rows = []
+    for p in patients:
+        tier_kind = risk_level(p["latest_mean"])[1]
+        sub = " · ".join(str(x) for x in [
+            f"{int(p['age'])} yrs" if p.get("age") is not None else None,
+            p.get("gender") if p.get("gender") not in (None, "Select") else None,
+        ] if x)
+        rows.append(f"""
+            <tr>
+                <td><div class="dt-name"><div class="dt-avatar">{_esc(_initials(p['name']))}</div>
+                    <div><div class="dt-title">{_esc(p['name'])}</div><div class="dt-sub">{_esc(sub)}</div></div></div></td>
+                <td><div class="dt-meter"><div class="dt-track"><div class="dt-fill" style="width:{min(p['latest_mean'], 100):.0f}%"></div></div>
+                    <span class="dt-num">{p['latest_mean']:.0f}%</span></div></td>
+                <td>{badge(p['latest_tier'].replace(' risk', ''), tier_kind, dot=True)}</td>
+                <td>{_chips(p['markers'], 'primary', 'No mutations')}</td>
+                <td class="dt-wrap-cell">{_chips(p['diseases'], 'neutral', '—')}</td>
+                <td style="text-align:center">{p['assessments']}</td>
+                <td style="white-space:nowrap">{_esc(fmt_when(p['last_assessed']))}</td>
+            </tr>""")
+    st.markdown(
+        f"""<div class="dt-wrap"><table class="dt dt-compact" style="min-width:980px !important">
+            <thead><tr><th>Patient</th><th>Latest risk</th><th>Tier</th><th>Mutations</th>
+            <th>Linked diseases</th><th>Visits</th><th>Last assessed</th></tr></thead>
+            <tbody>{''.join(rows)}</tbody></table></div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in (name or "?").split() if p]
+    return "".join(p[0] for p in parts[:2]).upper() or "?"
+
+
+def history_chart(history: list):
+    """Risk over time for one patient, with the 90% range as a band."""
+    t = tokens()
+    pts = sorted(history, key=lambda r: r["created_at"])
+    x = [fmt_when(r["created_at"]) for r in pts]
+    mean = [r["result"]["mean"] for r in pts]
+    lo = [r["result"]["ci_low"] for r in pts]
+    hi = [r["result"]["ci_high"] for r in pts]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x + x[::-1], y=hi + lo[::-1], fill="toself", fillcolor=t["band"],
+                             line=dict(width=0), hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(
+        x=x, y=mean, mode="lines+markers", line=dict(color=t["line"], width=2.5),
+        marker=dict(size=9, color=t["line"], line=dict(color=t["surface"], width=2)),
+        hovertemplate="%{x}<br>Risk %{y:.0f}%<extra></extra>", showlegend=False,
+    ))
+    for y0, y1, color in [(0, 20, t["good"][0]), (20, 50, t["warn"][0]), (50, 100, t["bad"][0])]:
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=color, opacity=0.35, line_width=0, layer="below")
+    fig.update_layout(
+        **_base_layout(t, 280), hovermode="closest",
+        xaxis=dict(type="category", showgrid=False, linecolor=t["border"]),
+        yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=t["grid"], zeroline=False,
+                   title=dict(text="Estimated risk", font=dict(size=13))),
+    )
+    fig.update_layout(margin=dict(l=56, r=16, t=12, b=40))
+    st.plotly_chart(fig, width="stretch", config=chart_config(), theme=None)
+
+
+def history_table(history: list):
+    rows = []
+    for r in history:
+        res = r["result"]
+        models = res.get("models") or {}
+        model_txt = " · ".join(f"{MODEL_BLURBS.get(k, (k[:2],))[0]} {v * 100:.0f}%" for k, v in models.items()) or "—"
+        fam = r["patient"].get("family_history") or {}
+        rows.append(
+            f"<tr><td style='white-space:nowrap'><span class='dt-title'>{_esc(fmt_when(r['created_at']))}</span></td>"
+            f"<td><b>{res['mean']:.0f}%</b> <span class='card-s'>({res['ci_low']:.0f}–{res['ci_high']:.0f}%)</span></td>"
+            f"<td>{badge(res['tier'].replace(' risk', ''), risk_level(res['mean'])[1], dot=True)}</td>"
+            f"<td style='white-space:nowrap'>{_esc(model_txt)}</td>"
+            f"<td>{_chips(r['patient'].get('markers', []) + r['patient'].get('other_markers', []), 'primary', 'None')}</td>"
+            f"<td style='white-space:nowrap'>{fam.get('First-degree', 0)} · {fam.get('Second-degree', 0)}</td></tr>"
+        )
+    st.markdown(
+        f"""<div class="dt-wrap"><table class="dt dt-compact" style="min-width:820px !important">
+            <thead><tr><th>Date</th><th>Risk (90% range)</th><th>Tier</th><th>ML models (20-yr)</th>
+            <th>Mutations</th><th>Relatives 1st · 2nd</th></tr></thead>
+            <tbody>{''.join(rows)}</tbody></table></div>""",
+        unsafe_allow_html=True,
+    )
